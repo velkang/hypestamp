@@ -18,6 +18,8 @@ export const rulesets = new Hono<AppEnv>()
           effectiveFrom: row.effectiveFrom,
           model: ruleset.extraction.model,
           sources: ruleset.sources.length,
+          status: row.status,
+          commitTx: row.commitTx,
           committedAt: row.committedAt,
         };
       }),

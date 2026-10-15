@@ -60,6 +60,7 @@ afterEach(() => dispose());
 const source = (events: StampedEvent[], head = 600n) => ({
   headBlock: vi.fn().mockResolvedValue(head),
   stampedEvents: vi.fn().mockResolvedValue(events),
+  committedRulesets: vi.fn().mockResolvedValue([]),
 });
 
 describe("reconcileStamps", () => {
@@ -67,7 +68,7 @@ describe("reconcileStamps", () => {
     const ledger = source([event({ bundleHash: `0x${"00".repeat(32)}` }), event()]);
     const result = await reconcileStamps({ db, ledger, now: NOW, startBlock: 400n });
 
-    expect(result).toEqual({ fromBlock: 400n, toBlock: 600n, stamped: [tradeId], failed: [] });
+    expect(result).toEqual({ fromBlock: 400n, toBlock: 600n, stamped: [tradeId], failed: [], confirmedRulesets: [], failedRulesets: [] });
     expect(ledger.stampedEvents).toHaveBeenCalledWith(400n, 600n);
     expect(await repo.submittedTrades(db)).toEqual([]);
     expect(await repo.lastSyncedBlock(db)).toBe(600n);
@@ -98,6 +99,6 @@ describe("reconcileStamps", () => {
     const ledger = source([]);
     const result = await reconcileStamps({ db, ledger, now: NOW, startBlock: 400n });
     expect(ledger.stampedEvents).not.toHaveBeenCalled();
-    expect(result).toEqual({ fromBlock: 601n, toBlock: 600n, stamped: [], failed: [] });
+    expect(result).toEqual({ fromBlock: 601n, toBlock: 600n, stamped: [], failed: [], confirmedRulesets: [], failedRulesets: [] });
   });
 });

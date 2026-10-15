@@ -1,5 +1,6 @@
 import { hexToString, type Hex } from "viem";
 import * as repo from "../db";
+import * as rulesetStore from "../rulesets/store";
 import { bundleHash, parseStampRequest, type StampRequest } from "../stamp/bundle";
 import { tweetHash } from "../stamp/encoding";
 
@@ -14,14 +15,24 @@ export type StampedEvent = {
   blockNumber: bigint;
 };
 
+export type CommittedRulesetEvent = { rulesetHash: string; txHash: string };
+
 export type LedgerSource = {
   headBlock(): Promise<bigint>;
   stampedEvents(fromBlock: bigint, toBlock: bigint): Promise<StampedEvent[]>;
+  committedRulesets(fromBlock: bigint, toBlock: bigint): Promise<CommittedRulesetEvent[]>;
 };
 
 type ReconcileDeps = { db: D1Database; ledger: LedgerSource; now: number; startBlock: bigint };
 
-export type ReconcileResult = { fromBlock: bigint; toBlock: bigint; stamped: number[]; failed: number[] };
+export type ReconcileResult = {
+  fromBlock: bigint;
+  toBlock: bigint;
+  stamped: number[];
+  failed: number[];
+  confirmedRulesets: string[];
+  failedRulesets: string[];
+};
 
 // The CRE trigger is asynchronous, so a submitted trade is confirmed only when an
 // EvidenceStamped event carries the bundleHash the trade reproduces from its own
@@ -51,8 +62,9 @@ export async function reconcileStamps({ db, ledger, now, startBlock }: Reconcile
     }
   }
 
+  const rulesets = await reconcileRulesets(db, ledger, fromBlock, toBlock, now);
   if (fromBlock <= toBlock) await repo.setLastSyncedBlock(db, toBlock);
-  return { fromBlock, toBlock, stamped, failed };
+  return { fromBlock, toBlock, stamped, failed, ...rulesets };
 }
 
 async function findMatch(db: D1Database, request: StampRequest, events: StampedEvent[]) {
@@ -70,4 +82,26 @@ async function findMatch(db: D1Database, request: StampRequest, events: StampedE
   return candidates.find(
     (e) => bundleHash(request, tweetHashes, e.entryPriceE8).toLowerCase() === e.bundleHash.toLowerCase(),
   );
+}
+
+// Rulesets committed from the app are confirmed by their own on-chain event, never
+// by the bridge's say-so; one that never lands is marked failed.
+async function reconcileRulesets(db: D1Database, ledger: LedgerSource, fromBlock: bigint, toBlock: bigint, now: number) {
+  const pending = await rulesetStore.pendingRulesets(db);
+  const confirmedRulesets: string[] = [];
+  const failedRulesets: string[] = [];
+  if (pending.length === 0) return { confirmedRulesets, failedRulesets };
+
+  const events = fromBlock <= toBlock ? await ledger.committedRulesets(fromBlock, toBlock) : [];
+  for (const ruleset of pending) {
+    const event = events.find((e) => e.rulesetHash.toLowerCase() === ruleset.hash.toLowerCase());
+    if (event) {
+      await rulesetStore.confirmRuleset(db, ruleset.hash, event.txHash);
+      confirmedRulesets.push(ruleset.hash);
+    } else if (rulesetStore.isStale(ruleset.committedAt, now)) {
+      await rulesetStore.failRuleset(db, ruleset.hash);
+      failedRulesets.push(ruleset.hash);
+    }
+  }
+  return { confirmedRulesets, failedRulesets };
 }

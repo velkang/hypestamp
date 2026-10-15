@@ -34,7 +34,7 @@ describe("API routes", () => {
     const { status, body } = await get("/v1/rulesets");
     expect(status).toBe(200);
     expect(body.data).toEqual([
-      { hash: RULESET_HASH, effectiveFrom: ruleset.effectiveFrom, model: "gpt-6-luna", sources: 3, committedAt: NOW - 4_000_000 },
+      { hash: RULESET_HASH, effectiveFrom: ruleset.effectiveFrom, model: "gpt-6-luna", sources: 3, committedAt: NOW - 4_000_000, status: "confirmed", commitTx: null },
     ]);
   });
 
@@ -54,6 +54,12 @@ describe("API routes", () => {
     expect(body.data[0]).toMatchObject({ id: tradeId, token: "LINK", side: "long", status: "submitted" });
     expect(body.data[0].explanation).toContain("LINK long");
     expect(body.data[0].flags).toEqual([]);
+  });
+
+  it("returns a trade with the full text of every post it cites", async () => {
+    const { body } = await get(`/v1/trades/${tradeId}`);
+    expect(body.data.posts.map((p: { id: string }) => p.id)).toEqual(["201", "101"]);
+    expect(body.data.posts[0]).toMatchObject({ id: "201", author: "CryptoHayes", text: "Loading $LINK" });
   });
 
   it("replays a trade", async () => {

@@ -25,7 +25,7 @@ export async function activeRuleset(
 ): Promise<ActiveRuleset | null> {
   const row = await db
     .prepare(
-      'SELECT hash, json FROM rulesets WHERE effective_from <= ? ORDER BY effective_from DESC LIMIT 1',
+      "SELECT hash, json FROM rulesets WHERE effective_from <= ? AND status = 'confirmed' ORDER BY effective_from DESC LIMIT 1",
     )
     .bind(Math.floor(nowMs / 1000))
     .first<{ hash: `0x${string}`; json: string }>()
@@ -266,6 +266,7 @@ export type TradeRow = {
   txHash: string | null;
   submittedAt: number;
   stampedAt: number | null;
+  isDemo: boolean;
 };
 
 type TradeDbRow = {
@@ -281,6 +282,7 @@ type TradeDbRow = {
   tx_hash: string | null;
   submitted_at: number;
   stamped_at: number | null;
+  is_demo: number;
 };
 
 const toTrade = (row: TradeDbRow): TradeRow => ({
@@ -296,6 +298,7 @@ const toTrade = (row: TradeDbRow): TradeRow => ({
   txHash: row.tx_hash,
   submittedAt: row.submitted_at,
   stampedAt: row.stamped_at,
+  isDemo: row.is_demo === 1,
 });
 
 export async function getTrade(db: D1Database, id: number): Promise<TradeRow | null> {
@@ -335,7 +338,50 @@ export async function promotionStats(db: D1Database, promptHash: string): Promis
 
 export async function listRulesets(db: D1Database) {
   const { results } = await db
-    .prepare("SELECT hash, json, effective_from, committed_at FROM rulesets ORDER BY effective_from DESC")
-    .all<{ hash: string; json: string; effective_from: number; committed_at: number }>();
-  return results.map((row) => ({ hash: row.hash, json: row.json, effectiveFrom: row.effective_from, committedAt: row.committed_at }));
+    .prepare("SELECT hash, json, effective_from, committed_at, status, commit_tx FROM rulesets ORDER BY effective_from DESC")
+    .all<{ hash: string; json: string; effective_from: number; committed_at: number; status: string; commit_tx: string | null }>();
+  return results.map((row) => ({
+    hash: row.hash,
+    json: row.json,
+    effectiveFrom: row.effective_from,
+    committedAt: row.committed_at,
+    status: row.status as "pending" | "confirmed" | "failed",
+    commitTx: row.commit_tx,
+  }));
+}
+
+export async function lastFetchAt(db: D1Database): Promise<number | null> {
+  const row = await db.prepare("SELECT MAX(fetched_at) AS at FROM tweets").first<{ at: number | null }>();
+  return row?.at ?? null;
+}
+
+export async function tradeCounts(db: D1Database) {
+  const { results } = await db
+    .prepare("SELECT status, COUNT(*) AS n, MAX(is_demo) AS demo FROM trades GROUP BY status")
+    .all<{ status: TradeRow["status"]; n: number; demo: number }>();
+  const counts = { submitted: 0, stamped: 0, failed: 0 };
+  let demo = false;
+  for (const row of results) {
+    counts[row.status] = row.n;
+    demo ||= row.demo === 1;
+  }
+  return { counts, demo };
+}
+
+export type FeedPost = TweetFields & { postedAt: number; extraction: Extraction | null };
+
+export async function feedPosts(db: D1Database, promptHash: string, fromMs: number, toMs: number): Promise<FeedPost[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT t.id, t.author, t.text, t.created_at, t.posted_at, e.json FROM tweets t
+       LEFT JOIN extractions e ON e.tweet_id = t.id AND e.prompt_hash = ?
+       WHERE t.posted_at >= ? AND t.posted_at <= ? ORDER BY t.posted_at DESC, t.id DESC`,
+    )
+    .bind(promptHash, fromMs, toMs)
+    .all<TweetRow & { posted_at: number; json: string | null }>();
+  return results.map((row) => ({
+    ...toTweet(row),
+    postedAt: row.posted_at,
+    extraction: row.json ? (JSON.parse(row.json) as Extraction) : null,
+  }));
 }

@@ -1,10 +1,14 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { getPlatformProxy } from "wrangler";
 
 // A real local D1 (workerd) with the migrations applied, discarded after the tests.
 export async function createTestDb() {
   const proxy = await getPlatformProxy<{ DB: D1Database }>({ configPath: "wrangler.jsonc", persist: false });
-  const statements = readFileSync("migrations/0001_init.sql", "utf8")
+  const statements = readdirSync("migrations")
+    .filter((file) => file.endsWith(".sql"))
+    .sort()
+    .map((file) => readFileSync(`migrations/${file}`, "utf8"))
+    .join(";\n")
     .replace(/--.*$/gm, "")
     .split(";")
     .map((sql) => sql.trim())

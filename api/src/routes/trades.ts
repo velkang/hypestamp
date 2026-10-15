@@ -9,7 +9,7 @@ const ID = /^\d{1,10}$/;
 function summarize(trade: repo.TradeRow) {
   const { requestJson, signalJson, ...rest } = trade;
   const signal = JSON.parse(signalJson) as { explanation: string; kols: unknown[] };
-  const request = JSON.parse(requestJson) as { flags: number };
+  const request = JSON.parse(requestJson) as { flags: number; tweetIds: string[] };
   return { ...rest, request, flags: describeFlags(request.flags), explanation: signal.explanation, kols: signal.kols };
 }
 
@@ -19,7 +19,12 @@ export const trades = new Hono<AppEnv>()
     const id = c.req.param("id");
     if (!ID.test(id)) return fail(c, 400, "id must be a positive integer");
     const trade = await repo.getTrade(c.env.DB, Number(id));
-    return trade ? ok(c, summarize(trade)) : fail(c, 404, "trade not found");
+    if (!trade) return fail(c, 404, "trade not found");
+    // Cited posts are the evidence, so they are returned whatever the feed window is.
+    const summary = summarize(trade);
+    const stored = new Map((await repo.tweetsByIds(c.env.DB, summary.request.tweetIds)).map((t) => [t.id, t]));
+    const posts = summary.request.tweetIds.flatMap((tweetId) => (stored.has(tweetId) ? [stored.get(tweetId)!] : []));
+    return ok(c, { ...summary, posts });
   })
   .get("/:id/replay", async (c) => {
     const id = c.req.param("id");

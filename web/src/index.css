@@ -1,1 +1,75 @@
+@import "@fontsource/hanken-grotesk/400.css";
+@import "@fontsource/hanken-grotesk/500.css";
+@import "@fontsource/hanken-grotesk/600.css";
+@import "@fontsource/hanken-grotesk/700.css";
+@import "@fontsource/fragment-mono/400.css";
 @import "tailwindcss";
+
+/*
+ * Graphite & emerald. Every colour is a role: grounds (page, panel, raised),
+ * lines, three ink levels, emerald for actions and proof, and state colours that
+ * only appear where they carry meaning (bullish, bearish/refused, flag/demo).
+ */
+@theme {
+  --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Fragment Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --color-page: #0a0b0d;
+  --color-panel: #121316;
+  --color-raised: #1a1c20;
+  --color-line: #222428;
+  --color-line-strong: #2e3137;
+  --color-ink: #edeef0;
+  --color-ink-muted: #a3a7af;
+  --color-ink-faint: #8e929b;
+  --color-action: #0b7a55;
+  --color-action-hover: #0d8c62;
+  --color-proof: #5edfae;
+  --color-bull: #34d399;
+  --color-bear: #f26b6b;
+  --color-bear-ink: #ff9c9c;
+  --color-flag: #f5b544;
+  --color-flag-ink: #e9c47a;
+  --color-quiet: #4a4e57;
+  --color-demo: #1b1810;
+  --color-demo-line: #3a3220;
+  --color-demo-ink: #e9d3a3;
+}
+
+@layer base {
+  html {
+    background: var(--color-page);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14.5px;
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    color-scheme: dark;
+  }
+  body {
+    margin: 0;
+    min-height: 100vh;
+  }
+  ::selection {
+    background: #1f4d3b;
+    color: var(--color-ink);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-proof);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+  a {
+    color: var(--color-proof);
+    text-decoration: none;
+    text-underline-offset: 3px;
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+}
