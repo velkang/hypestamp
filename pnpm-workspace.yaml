@@ -1,0 +1,8 @@
+packages:
+  - api
+  - web
+
+allowBuilds:
+  esbuild: true
+  workerd: true
+confirmModulesPurge: false

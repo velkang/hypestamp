@@ -1,0 +1,29 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+node_modules/
+.pnpm-store/
+coverage/
+dist
+*.tsbuildinfo
+
+# Foundry
+contracts/cache/
+contracts/out/
+contracts/broadcast/
+
+# Cloudflare
+.wrangler/
+.dev.vars
+
+# CRE
+cre/**/.cre_build_tmp.js
+cre/**/.env
+
+# Private working notes
+docs
+AGENTS.md
+IMPLEMENTATION_PLAN.md
+PRODUCT.md
+.claude
