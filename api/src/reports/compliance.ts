@@ -1,3 +1,4 @@
+import { describeFlags } from "../agent/flags";
 import * as repo from "../db";
 import { replayTrade } from "../replay";
 
@@ -7,6 +8,7 @@ export type ComplianceReport = {
   rulesets: number;
   trades: { total: number; submitted: number; stamped: number; failed: number };
   replay: { match: number; mismatch: number; pending: number };
+  flagged: Record<string, number>;
   promotion: repo.PromotionStats[];
 };
 
@@ -19,9 +21,11 @@ export async function complianceReport(db: D1Database, now: number): Promise<Com
   ]);
 
   const replay = { match: 0, mismatch: 0, pending: 0 };
+  const flagged: Record<string, number> = { "undisclosed-promo": 0, "coordinated-burst": 0, "paid-marker": 0 };
   for (const trade of trades) {
     const result = await replayTrade(db, trade.id);
     if (result) replay[result.verdict] += 1;
+    for (const name of describeFlags(JSON.parse(trade.requestJson).flags)) flagged[name] += 1;
   }
 
   return {
@@ -35,6 +39,7 @@ export async function complianceReport(db: D1Database, now: number): Promise<Com
       failed: trades.filter((t) => t.status === "failed").length,
     },
     replay,
+    flagged,
     promotion: active ? await repo.promotionStats(db, active.ruleset.extraction.promptHash) : [],
   };
 }

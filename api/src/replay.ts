@@ -64,7 +64,8 @@ async function checkDecision(
   const decision = decideTrade(ruleset, signal, []);
   if (!decision.accepted) return [signalCheck, { name: "request", status: "fail", detail: decision.reason }];
 
-  const rebuilt = buildStampRequest(hash, signal, decision.trade, extractions, asOf);
+  const tweets = await repo.tweetsByIds(db, signal.kols.map((k) => k.tweetId));
+  const rebuilt = buildStampRequest(ruleset, hash, signal, decision.trade, extractions, tweets, asOf);
   return [
     signalCheck,
     canonicalJson(rebuilt) === canonicalJson(request)

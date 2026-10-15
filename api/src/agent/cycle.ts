@@ -1,9 +1,11 @@
 import { keccak256, toBytes } from "viem";
 import * as repo from "../db";
 import type { StampRequest } from "../stamp/bundle";
-import { canonicalJson } from "../stamp/encoding";
+import type { Ruleset } from "../rulesets/schema";
+import { canonicalJson, type TweetFields } from "../stamp/encoding";
 import { converge } from "./converge";
 import { extractTweets, type ExtractionClient } from "./extract";
+import { computeFlags } from "./flags";
 import { fetchSourceTweets } from "./ingest";
 import { decideTrade, type Trade } from "./risk";
 import type { Extraction, Signal } from "./types";
@@ -45,7 +47,8 @@ export async function runAgentCycle(rawDeps: CycleDeps): Promise<CycleResult> {
   for (const signal of converge(ruleset, extractions, deps.now)) {
     const decision = decideTrade(ruleset, signal, await repo.openTradeTokens(deps.db));
     if (!decision.accepted) continue;
-    const request = buildStampRequest(hash, signal, decision.trade, extractions, deps.now);
+    const tweets = await repo.tweetsByIds(deps.db, signal.kols.map((k) => k.tweetId));
+    const request = buildStampRequest(ruleset, hash, signal, decision.trade, extractions, tweets, deps.now);
     const ok = await submitTrade(deps, hash, signal, request, errors);
     if (ok) submitted.push(signal.token);
   }
@@ -88,10 +91,12 @@ function citedTweetIds(signal: Signal): string[] {
 }
 
 export function buildStampRequest(
+  ruleset: Ruleset,
   rulesetHash: string,
   signal: Signal,
   trade: Trade,
   extractions: Extraction[],
+  tweets: TweetFields[],
   now: number,
 ): StampRequest {
   const tweetIds = citedTweetIds(signal);
@@ -104,7 +109,7 @@ export function buildStampRequest(
     tweetIds,
     extractionsHash: keccak256(toBytes(canonicalJson(cited))),
     trade: { sizePct: trade.sizePct, stopLossPct: trade.stopLossPct, takeProfitPct: trade.takeProfitPct },
-    flags: 0,
+    flags: computeFlags(ruleset, signal, extractions, tweets),
     observedAt: Math.floor(now / 1000),
   };
 }

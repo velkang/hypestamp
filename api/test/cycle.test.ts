@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vite
 import { keccak256, toBytes } from "viem";
 import { runAgentCycle, type CycleDeps } from "../src/agent/cycle";
 import { extractionPromptHash } from "../src/agent/extract";
+import { FLAG } from "../src/agent/flags";
 import * as repo from "../src/db";
 import { parseStampRequest, type StampRequest } from "../src/stamp/bundle";
 import { canonicalJson } from "../src/stamp/encoding";
@@ -62,6 +63,21 @@ describe("runAgentCycle", () => {
     const known = await repo.extractionsSince(db, extractionPromptHash(), 0, asOf);
     expect(known.map((e) => e.tweetId).sort()).toEqual(["101", "201", "301"]);
     expect(await repo.extractionsSince(db, extractionPromptHash(), 0, asOf - 1)).toEqual([]);
+  });
+
+  it("records evidence flags from the cited tweets in the stamp request", async () => {
+    await repo.saveRuleset(db, ruleset, RULESET_HASH, NOW - 4_000_000);
+    const twitter = fakeTwitter();
+    deps.fetch = (async (input: RequestInfo | URL) => {
+      const response = await twitter(input);
+      const body = (await response.json()) as { data: { tweets: { text: string }[] } };
+      for (const t of body.data.tweets) if (t.text.includes("$LINK")) t.text += " (sponsored)";
+      return new Response(JSON.stringify(body));
+    }) as typeof fetch;
+
+    await runAgentCycle(deps);
+
+    expect(parseStampRequest(submitStamp.mock.calls[0][0]).flags).toBe(FLAG.PAID_MARKER);
   });
 
   it("does not resubmit while the position is open", async () => {

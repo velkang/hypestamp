@@ -32,6 +32,7 @@ describe("complianceReport", () => {
       rulesets: 0,
       trades: { total: 0, submitted: 0, stamped: 0, failed: 0 },
       replay: { match: 0, mismatch: 0, pending: 0 },
+      flagged: { "undisclosed-promo": 0, "coordinated-burst": 0, "paid-marker": 0 },
       promotion: [],
     });
   });
@@ -66,6 +67,7 @@ describe("complianceReport", () => {
       rulesets: 1,
       trades: { total: 1, submitted: 1, stamped: 0, failed: 0 },
       replay: { match: 0, mismatch: 0, pending: 1 },
+      flagged: { "undisclosed-promo": 0, "coordinated-burst": 0, "paid-marker": 0 },
     });
     expect(report.promotion[0]).toEqual({ author: "shillooor", posts: 3, promo: 2, promoWithoutDisclosure: 1 });
     expect(report.promotion.map((p) => p.author)).toContain("cobie");

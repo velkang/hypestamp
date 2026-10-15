@@ -53,6 +53,7 @@ describe("API routes", () => {
     expect(body.data).toHaveLength(1);
     expect(body.data[0]).toMatchObject({ id: tradeId, token: "LINK", side: "long", status: "submitted" });
     expect(body.data[0].explanation).toContain("LINK long");
+    expect(body.data[0].flags).toEqual([]);
   });
 
   it("replays a trade", async () => {
