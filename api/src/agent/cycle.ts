@@ -8,7 +8,7 @@ import { fetchSourceTweets } from "./ingest";
 import { decideTrade, type Trade } from "./risk";
 import type { Extraction, Signal } from "./types";
 
-const HOUR_MS = 3_600_000;
+export const HOUR_MS = 3_600_000;
 const EXTRACTION_BATCH = 25;
 const MAX_CITED_TWEETS = 10; // CRE consensus budget per stamp
 
@@ -26,7 +26,10 @@ export type CycleResult =
   | { status: "no-active-ruleset" }
   | { status: "ok"; newTweets: number; extracted: number; submitted: string[]; errors: string[] };
 
-export async function runAgentCycle(deps: CycleDeps): Promise<CycleResult> {
+export async function runAgentCycle(rawDeps: CycleDeps): Promise<CycleResult> {
+  // Whole seconds throughout: observedAt is recorded in seconds and replay rebuilds
+  // the decision from it, so the cycle must not use sub-second time anywhere.
+  const deps = { ...rawDeps, now: Math.floor(rawDeps.now / 1000) * 1000 };
   const active = await repo.activeRuleset(deps.db, deps.now);
   if (!active) return { status: "no-active-ruleset" };
 
@@ -37,7 +40,7 @@ export async function runAgentCycle(deps: CycleDeps): Promise<CycleResult> {
   const newTweets = await ingest(deps, ruleset.sources.map((s) => s.handle), windowStart, errors);
   const extracted = await extractPending(deps, ruleset, windowStart);
 
-  const extractions = await repo.extractionsSince(deps.db, ruleset.extraction.promptHash, windowStart);
+  const extractions = await repo.extractionsSince(deps.db, ruleset.extraction.promptHash, windowStart, deps.now);
   const submitted: string[] = [];
   for (const signal of converge(ruleset, extractions, deps.now)) {
     const decision = decideTrade(ruleset, signal, await repo.openTradeTokens(deps.db));
@@ -84,7 +87,7 @@ function citedTweetIds(signal: Signal): string[] {
   return signal.kols.filter((k) => top.includes(k)).map((k) => k.tweetId);
 }
 
-function buildStampRequest(
+export function buildStampRequest(
   rulesetHash: string,
   signal: Signal,
   trade: Trade,

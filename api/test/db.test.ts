@@ -53,6 +53,8 @@ describe("tweets and extractions", () => {
     expect((await repo.tweetsNeedingExtraction(db, "0xother", 15_000)).map((t) => t.id)).toEqual(["2"]);
     expect(await repo.extractionsSince(db, "0xprompt", 0)).toEqual([extraction]);
     expect(await repo.extractionsSince(db, "0xprompt", 11_000)).toEqual([]);
+    expect(await repo.extractionsSince(db, "0xprompt", 0, 29_999)).toEqual([]); // fetched at 30_000
+    expect(await repo.extractionsSince(db, "0xprompt", 0, 30_000)).toEqual([extraction]);
   });
 
   it("returns stored tweets by ID", async () => {

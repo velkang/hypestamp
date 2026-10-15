@@ -111,19 +111,22 @@ export async function saveExtractions(
   )
 }
 
+// asOf limits to tweets the agent had already fetched by then, so replay sees the
+// same inputs the original decision did.
 export async function extractionsSince(
   db: D1Database,
   promptHash: string,
   sinceMs: number,
+  asOfMs: number = Number.MAX_SAFE_INTEGER,
 ): Promise<Extraction[]> {
   const { results } = await db
     .prepare(
       `SELECT e.json FROM extractions e JOIN tweets t ON t.id = e.tweet_id
-       WHERE e.prompt_hash = ? AND t.posted_at >= ? ORDER BY t.posted_at, t.id`,
+       WHERE e.prompt_hash = ? AND t.posted_at >= ? AND t.fetched_at <= ? ORDER BY t.posted_at, t.id`,
     )
-    .bind(promptHash, sinceMs)
-    .all<{ json: string }>()
-  return results.map((row) => JSON.parse(row.json) as Extraction)
+    .bind(promptHash, sinceMs, asOfMs)
+    .all<{ json: string }>();
+  return results.map((row) => JSON.parse(row.json) as Extraction);
 }
 
 export type NewTrade = {
@@ -243,4 +246,96 @@ export async function setLastSyncedBlock(db: D1Database, block: bigint) {
     )
     .bind(Number(block))
     .run()
+}
+
+export async function rulesetJsonByHash(db: D1Database, hash: string): Promise<string | null> {
+  const row = await db.prepare("SELECT json FROM rulesets WHERE hash = ?").bind(hash).first<{ json: string }>();
+  return row?.json ?? null;
+}
+
+export type TradeRow = {
+  id: number;
+  rulesetHash: string;
+  token: string;
+  side: Side;
+  status: "submitted" | "stamped" | "failed";
+  requestJson: string;
+  signalJson: string;
+  bundleHash: string | null;
+  entryPriceE8: string | null;
+  txHash: string | null;
+  submittedAt: number;
+  stampedAt: number | null;
+};
+
+type TradeDbRow = {
+  id: number;
+  ruleset_hash: string;
+  token: string;
+  side: Side;
+  status: TradeRow["status"];
+  request_json: string;
+  signal_json: string;
+  bundle_hash: string | null;
+  entry_price_e8: string | null;
+  tx_hash: string | null;
+  submitted_at: number;
+  stamped_at: number | null;
+};
+
+const toTrade = (row: TradeDbRow): TradeRow => ({
+  id: row.id,
+  rulesetHash: row.ruleset_hash,
+  token: row.token,
+  side: row.side,
+  status: row.status,
+  requestJson: row.request_json,
+  signalJson: row.signal_json,
+  bundleHash: row.bundle_hash,
+  entryPriceE8: row.entry_price_e8,
+  txHash: row.tx_hash,
+  submittedAt: row.submitted_at,
+  stampedAt: row.stamped_at,
+});
+
+export async function getTrade(db: D1Database, id: number): Promise<TradeRow | null> {
+  const row = await db.prepare("SELECT * FROM trades WHERE id = ?").bind(id).first<TradeDbRow>();
+  return row ? toTrade(row) : null;
+}
+
+export async function listTrades(db: D1Database): Promise<TradeRow[]> {
+  const { results } = await db.prepare("SELECT * FROM trades ORDER BY id DESC").all<TradeDbRow>();
+  return results.map(toTrade);
+}
+
+export async function countRulesets(db: D1Database): Promise<number> {
+  const row = await db.prepare("SELECT COUNT(*) AS n FROM rulesets").first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
+export type PromotionStats = { author: string; posts: number; promo: number; promoWithoutDisclosure: number };
+
+// Per-author promotion tally from extractions made under one prompt.
+export async function promotionStats(db: D1Database, promptHash: string): Promise<PromotionStats[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT t.author AS author,
+              COUNT(*) AS posts,
+              SUM(json_extract(e.json, '$.isPromo')) AS promo,
+              SUM(json_extract(e.json, '$.isPromo') AND NOT json_extract(e.json, '$.hasDisclosure')) AS undisclosed
+       FROM extractions e JOIN tweets t ON t.id = e.tweet_id
+       WHERE e.prompt_hash = ?
+       GROUP BY t.author
+       ORDER BY undisclosed DESC, promo DESC, t.author`,
+    )
+    .bind(promptHash)
+    .all<{ author: string; posts: number; promo: number; undisclosed: number }>();
+  return results.map((r) => ({ author: r.author, posts: r.posts, promo: r.promo, promoWithoutDisclosure: r.undisclosed }));
+}
+
+export async function listRulesets(db: D1Database) {
+  const { results } = await db
+    .prepare("SELECT hash, json, effective_from, committed_at FROM rulesets ORDER BY effective_from DESC")
+    .all<{ hash: string; json: string; effective_from: number; committed_at: number }>();
+  return results.map((row) => ({ hash: row.hash, json: row.json, effectiveFrom: row.effective_from, committedAt: row.committed_at }));
 }

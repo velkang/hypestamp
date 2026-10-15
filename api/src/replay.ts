@@ -1,0 +1,89 @@
+// Re-derives a trade from stored inputs to show it followed its pre-committed rules.
+import { buildStampRequest, HOUR_MS } from "./agent/cycle";
+import { converge } from "./agent/converge";
+import { decideTrade } from "./agent/risk";
+import * as repo from "./db";
+import { parseRuleset, type Ruleset } from "./rulesets/schema";
+import { bundleHash, parseStampRequest, type StampRequest } from "./stamp/bundle";
+import { canonicalJson, rulesetHash, tweetHash } from "./stamp/encoding";
+
+export type CheckStatus = "pass" | "fail" | "pending";
+export type ReplayCheck = { name: "ruleset" | "signal" | "request" | "bundle"; status: CheckStatus; detail: string };
+export type ReplayResult = { tradeId: number; verdict: "match" | "mismatch" | "pending"; checks: ReplayCheck[] };
+
+export async function replayTrade(db: D1Database, tradeId: number): Promise<ReplayResult | null> {
+  const trade = await repo.getTrade(db, tradeId);
+  if (!trade) return null;
+
+  const rulesetJson = await repo.rulesetJsonByHash(db, trade.rulesetHash);
+  if (!rulesetJson) throw new Error(`Ruleset ${trade.rulesetHash} for trade ${tradeId} is missing`);
+  const ruleset = parseRuleset(JSON.parse(rulesetJson));
+  const request = parseStampRequest(JSON.parse(trade.requestJson));
+
+  const checks: ReplayCheck[] = [
+    checkRuleset(ruleset, trade.rulesetHash),
+    ...(await checkDecision(db, ruleset, trade.rulesetHash, request)),
+    await checkBundle(db, request, trade),
+  ];
+  const verdict = checks.some((c) => c.status === "fail")
+    ? "mismatch"
+    : checks.some((c) => c.status === "pending")
+      ? "pending"
+      : "match";
+  return { tradeId, verdict, checks };
+}
+
+function checkRuleset(ruleset: Ruleset, committedHash: string): ReplayCheck {
+  const hash = rulesetHash(ruleset);
+  return hash === committedHash
+    ? { name: "ruleset", status: "pass", detail: `stored ruleset hashes to the committed ${committedHash}` }
+    : { name: "ruleset", status: "fail", detail: `stored ruleset hashes to ${hash}, not the committed ${committedHash}` };
+}
+
+// Converge and risk are re-run on exactly the extractions the agent had at observedAt.
+async function checkDecision(
+  db: D1Database,
+  ruleset: Ruleset,
+  hash: string,
+  request: StampRequest,
+): Promise<ReplayCheck[]> {
+  const asOf = request.observedAt * 1000;
+  const windowStart = asOf - ruleset.converge.windowHours * HOUR_MS;
+  const extractions = await repo.extractionsSince(db, ruleset.extraction.promptHash, windowStart, asOf);
+  const signal = converge(ruleset, extractions, asOf).find(
+    (s) => s.token === request.signal.token && s.side === request.signal.side,
+  );
+  if (!signal) {
+    return [
+      { name: "signal", status: "fail", detail: `no ${request.signal.token} ${request.signal.side} signal under these rules` },
+      { name: "request", status: "fail", detail: "nothing to rebuild without the signal" },
+    ];
+  }
+
+  const signalCheck: ReplayCheck = { name: "signal", status: "pass", detail: signal.explanation };
+  const decision = decideTrade(ruleset, signal, []);
+  if (!decision.accepted) return [signalCheck, { name: "request", status: "fail", detail: decision.reason }];
+
+  const rebuilt = buildStampRequest(hash, signal, decision.trade, extractions, asOf);
+  return [
+    signalCheck,
+    canonicalJson(rebuilt) === canonicalJson(request)
+      ? { name: "request", status: "pass", detail: "rebuilt stamp request is identical, including extractionsHash" }
+      : { name: "request", status: "fail", detail: "rebuilt stamp request differs from the one submitted" },
+  ];
+}
+
+async function checkBundle(db: D1Database, request: StampRequest, trade: repo.TradeRow): Promise<ReplayCheck> {
+  if (!trade.bundleHash || !trade.entryPriceE8) {
+    return { name: "bundle", status: "pending", detail: "not stamped on-chain yet" };
+  }
+  const tweets = new Map((await repo.tweetsByIds(db, request.tweetIds)).map((t) => [t.id, t]));
+  const hashes = request.tweetIds.map((id) => {
+    const tweet = tweets.get(id);
+    return { id, hash: tweet ? tweetHash(tweet) : ("0x" as const) };
+  });
+  const recomputed = bundleHash(request, hashes, BigInt(trade.entryPriceE8));
+  return recomputed.toLowerCase() === trade.bundleHash.toLowerCase()
+    ? { name: "bundle", status: "pass", detail: `recomputes to the on-chain ${trade.bundleHash}` }
+    : { name: "bundle", status: "fail", detail: `recomputes to ${recomputed}, on-chain record is ${trade.bundleHash}` };
+}

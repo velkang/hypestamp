@@ -1,9 +1,5 @@
-import { Hono } from "hono";
+import { app } from "./app";
 import { runScheduled, type WorkerEnv } from "./scheduled";
-
-const app = new Hono();
-
-app.get("/health", (c) => c.json({ status: "ok" }));
 
 export default {
   fetch: app.fetch,
