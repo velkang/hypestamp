@@ -18,6 +18,7 @@ contract HypestampLedgerTest is Test {
   bytes32 internal constant BUNDLE_2 = keccak256("bundle-2");
   bytes32 internal constant LINK = bytes32("LINK");
 
+  event CooldownUpdated(uint64 previousCooldown, uint64 newCooldown);
   event RulesetCommitted(bytes32 indexed rulesetHash, uint64 effectiveFrom);
   event RulesetSuperseded(bytes32 indexed rulesetHash, uint64 supersededAt);
   event EvidenceStamped(
@@ -71,6 +72,36 @@ contract HypestampLedgerTest is Test {
     vm.prank(FORWARDER);
     vm.expectRevert();
     ledger.onReport("", abi.encode(uint8(7), RULES_A, START + COOLDOWN));
+  }
+
+  // ---------- cooldown setting ----------
+
+  function test_ConstructorSetsCooldown() public view {
+    assertEq(ledger.cooldown(), COOLDOWN);
+  }
+
+  function test_OwnerCanChangeCooldownAndItIsAnnounced() public {
+    vm.expectEmit(address(ledger));
+    emit CooldownUpdated(COOLDOWN, 2 minutes);
+    ledger.setCooldown(2 minutes);
+    assertEq(ledger.cooldown(), 2 minutes);
+  }
+
+  function test_NonOwnerCannotChangeCooldown() public {
+    vm.prank(address(0xBAD));
+    vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", address(0xBAD)));
+    ledger.setCooldown(0);
+  }
+
+  function test_NewCooldownAppliesToLaterCommits() public {
+    ledger.setCooldown(2 minutes);
+    _commit(RULES_A, START + 2 minutes);
+
+    vm.warp(START + 1);
+    vm.expectRevert(
+      abi.encodeWithSelector(HypestampLedger.CooldownNotRespected.selector, START + 2 minutes, START + 2 minutes + 1)
+    );
+    _commit(RULES_B, START + 2 minutes);
   }
 
   // ---------- committing rulesets ----------

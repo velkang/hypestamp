@@ -5,9 +5,10 @@ import {ReceiverTemplate} from "./chainlink/ReceiverTemplate.sol";
 
 /// @title HypestampLedger
 /// @notice Append-only record of pre-committed trading rulesets and the evidence stamped under them.
-/// @dev Written only by the Chainlink CRE forwarder. A ruleset must be committed at least `COOLDOWN`
+/// @dev Written only by the Chainlink CRE forwarder. A ruleset must be committed at least `cooldown`
 ///      seconds before it takes effect (like a Rule 10b5-1 cooling-off period), and evidence is accepted
 ///      only under the ruleset active at block time, so neither rules nor evidence can be backdated.
+///      The owner can change the cooldown; every change is announced with CooldownUpdated so it is auditable.
 contract HypestampLedger is ReceiverTemplate {
   enum ReportKind {
     CommitRuleset,
@@ -29,12 +30,13 @@ contract HypestampLedger is ReceiverTemplate {
     uint64 stampedAt;
   }
 
-  uint64 public immutable COOLDOWN;
+  uint64 public cooldown;
 
   mapping(bytes32 rulesetHash => Ruleset) public rulesets;
   mapping(bytes32 bundleHash => Evidence) public evidence;
   bytes32 public latestRuleset;
 
+  event CooldownUpdated(uint64 previousCooldown, uint64 newCooldown);
   event RulesetCommitted(bytes32 indexed rulesetHash, uint64 effectiveFrom);
   event RulesetSuperseded(bytes32 indexed rulesetHash, uint64 supersededAt);
   event EvidenceStamped(
@@ -53,8 +55,14 @@ contract HypestampLedger is ReceiverTemplate {
   error RulesetNotActive(bytes32 rulesetHash, uint64 at);
   error EvidenceAlreadyStamped(bytes32 bundleHash);
 
-  constructor(address forwarder, uint64 cooldown) ReceiverTemplate(forwarder) {
-    COOLDOWN = cooldown;
+  constructor(address forwarder, uint64 initialCooldown) ReceiverTemplate(forwarder) {
+    cooldown = initialCooldown;
+    emit CooldownUpdated(0, initialCooldown);
+  }
+
+  function setCooldown(uint64 newCooldown) external onlyOwner {
+    emit CooldownUpdated(cooldown, newCooldown);
+    cooldown = newCooldown;
   }
 
   function isActive(bytes32 rulesetHash, uint64 at) public view returns (bool) {
@@ -74,7 +82,7 @@ contract HypestampLedger is ReceiverTemplate {
   }
 
   function _commitRuleset(bytes32 rulesetHash, uint64 effectiveFrom) private {
-    uint64 earliestAllowed = uint64(block.timestamp) + COOLDOWN;
+    uint64 earliestAllowed = uint64(block.timestamp) + cooldown;
     if (effectiveFrom < earliestAllowed) revert CooldownNotRespected(effectiveFrom, earliestAllowed);
     if (rulesets[rulesetHash].effectiveFrom != 0) revert RulesetAlreadyCommitted(rulesetHash);
 

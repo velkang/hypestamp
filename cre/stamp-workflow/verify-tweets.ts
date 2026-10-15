@@ -1,10 +1,7 @@
 import { ConfidentialHTTPClient, json, ok, type Runtime } from "@chainlink/cre-sdk";
+import type { Hex } from "viem";
 import { tweetHash, type TweetFields } from "../../api/src/stamp/encoding";
-
-export type Config = {
-  twitterApiUrl: string;
-  owner: string;
-};
+import type { Config } from "./config";
 
 type ApiTweet = {
   id: string;
@@ -13,11 +10,20 @@ type ApiTweet = {
   author: { userName: string } | null;
 };
 
-export type VerifiedTweet = TweetFields & { hash: string };
+export type VerifiedTweet = TweetFields & { hash: Hex };
 
 export function toTweetFields(tweet: ApiTweet): TweetFields {
   if (!tweet.id || !tweet.author) throw new Error("Tweet not found or deleted");
   return { id: tweet.id, author: tweet.author.userName, text: tweet.text, createdAt: tweet.createdAt };
+}
+
+export function orderByRequest(tweetIds: string[], tweets: TweetFields[]): TweetFields[] {
+  const byId = new Map(tweets.map((tweet) => [tweet.id, tweet]));
+  return tweetIds.map((id) => {
+    const tweet = byId.get(id);
+    if (!tweet) throw new Error(`Tweet ${id} not returned; it may be deleted`);
+    return tweet;
+  });
 }
 
 // The request runs once inside the Confidential HTTP enclave; the API key is resolved
@@ -36,9 +42,7 @@ export function fetchVerifiedTweets(runtime: Runtime<Config>, tweetIds: string[]
 
   if (!ok(response)) throw new Error(`twitterapi.io request failed with status ${response.statusCode}`);
 
-  const body = json(response) as { tweets: ApiTweet[] };
-  return body.tweets.map((tweet) => {
-    const fields = toTweetFields(tweet);
-    return { ...fields, hash: tweetHash(fields) };
-  });
+  const body = json(response) as { tweets?: ApiTweet[] };
+  const fields = (body.tweets ?? []).filter((tweet) => tweet.id).map(toTweetFields);
+  return orderByRequest(tweetIds, fields).map((tweet) => ({ ...tweet, hash: tweetHash(tweet) }));
 }

@@ -1,4 +1,8 @@
 {
   "twitterApiUrl": "https://api.twitterapi.io/twitter/tweets",
-  "owner": ""
+  "priceApiUrl": "https://api.coingecko.com/api/v3/simple/price",
+  "owner": "",
+  "chainSelectorName": "ethereum-testnet-sepolia",
+  "ledgerAddress": "0xaB3B70984e300f48Cd3523b15170dDe2A6ad0018",
+  "gasLimit": "1000000"
 }
