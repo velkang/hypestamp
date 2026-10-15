@@ -9,7 +9,7 @@ export const demoRuleset: Ruleset = {
     { handle: "blknoiz06", trustWeight: 0.6 },
   ],
   extraction: {
-    model: "claude-sonnet-5-5",
+    model: "gpt-6-luna",
     promptHash: "0x1111111111111111111111111111111111111111111111111111111111111111",
     schemaVersion: 1,
   },

@@ -27,3 +27,6 @@ AGENTS.md
 IMPLEMENTATION_PLAN.md
 PRODUCT.md
 .claude
+
+api/rulesets
+api/scripts

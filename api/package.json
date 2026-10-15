@@ -5,10 +5,13 @@
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "commit-ruleset": "bun scripts/commit-ruleset.ts",
+    "db:migrate:local": "wrangler d1 migrations apply hypestamp --local"
   },
   "dependencies": {
     "hono": "^4.13.13",
+    "openai": "^7.33.0",
     "viem": "^2.57.6",
     "zod": "^4.6.7"
   },
@@ -16,6 +19,7 @@
     "@cloudflare/workers-types": "^5.20261014.1",
     "@vitest/coverage-v8": "5.0.4",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.4"
+    "vitest": "^5.0.4",
+    "wrangler": "^4.151.0"
   }
 }

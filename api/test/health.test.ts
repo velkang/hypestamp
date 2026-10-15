@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import app from "../src";
+import worker from "../src";
+const app = { request: (path: string) => worker.fetch(new Request(`http://localhost${path}`)) };
 
 describe("API health", () => {
   it("reports readiness without exposing configuration", async () => {
