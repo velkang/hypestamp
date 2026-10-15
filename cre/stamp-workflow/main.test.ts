@@ -1,42 +1,25 @@
-import { describe, expect } from "bun:test";
-import { newTestRuntime, test } from "@chainlink/cre-sdk/test";
-import { onCronTrigger, initWorkflow } from "./main";
-import type { Config } from "./main";
+import { describe, expect, test } from "bun:test";
+import { initWorkflow } from "./main";
+import { toTweetFields } from "./verify-tweets";
 
-describe("onCronTrigger", () => {
-  test("logs message and returns greeting", async () => {
-    const config: Config = { schedule: "*/5 * * * *" };
-    const runtime = newTestRuntime();
-    runtime.config = config;
-
-    const result = onCronTrigger(runtime);
-
-    expect(result).toBe("Hello world!");
-    const logs = runtime.getLogs();
-    expect(logs).toContain("Hello world! Workflow triggered.");
+describe("initWorkflow", () => {
+  test("registers a single HTTP-triggered handler", () => {
+    expect(initWorkflow()).toHaveLength(1);
   });
 });
 
-describe("initWorkflow", () => {
-  test("returns one handler with correct cron schedule", async () => {
-    const testSchedule = "0 0 * * *";
-    const config: Config = { schedule: testSchedule };
-
-    const handlers = initWorkflow(config);
-
-    expect(handlers).toBeArray();
-    expect(handlers).toHaveLength(1);
-    expect(handlers[0].trigger.config.schedule).toBe(testSchedule);
+describe("toTweetFields", () => {
+  test("keeps only the stable fields and the author's handle", () => {
+    const fields = toTweetFields({
+      id: "1",
+      text: "gm",
+      createdAt: "Thu Oct 15 03:39:15 +0000 2026",
+      author: { userName: "VitalikButerin" },
+    });
+    expect(fields).toEqual({ id: "1", author: "VitalikButerin", text: "gm", createdAt: "Thu Oct 15 03:39:15 +0000 2026" });
   });
 
-  test("handler executes onCronTrigger and returns result", async () => {
-    const config: Config = { schedule: "*/5 * * * *" };
-    const runtime = newTestRuntime();
-    runtime.config = config;
-    const handlers = initWorkflow(config);
-
-    const result = handlers[0].fn(runtime, {});
-
-    expect(result).toBe(onCronTrigger(runtime));
+  test("rejects a deleted tweet that comes back empty", () => {
+    expect(() => toTweetFields({ id: "", text: "", createdAt: "", author: null })).toThrow("Tweet not found");
   });
 });
