@@ -1,6 +1,7 @@
 // Pure hashing shared with the CRE workflow (cre/stamp-workflow imports this file),
 // so on-chain hashes match what the API computes. Keep it free of Hono and D1 imports.
-import { keccak256, toBytes, type Hex } from "viem";
+import { encodeAbiParameters, keccak256, stringToHex, toBytes, type Hex } from "viem";
+import type { Ruleset } from "../rulesets/schema";
 
 type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
 
@@ -41,4 +42,55 @@ export function tweetHash(tweet: TweetFields): Hex {
     createdAt: tweet.createdAt,
   };
   return keccak256(toBytes(canonicalJson(stable)));
+}
+
+// The ruleset's identity on-chain. Callers validate with parseRuleset first.
+export function rulesetHash(ruleset: Ruleset): Hex {
+  return keccak256(toBytes(canonicalJson(ruleset)));
+}
+
+// Report layouts must match HypestampLedger._processReport (contracts/src/HypestampLedger.sol).
+export const ReportKind = { CommitRuleset: 0, StampEvidence: 1 } as const;
+export const Side = { Long: 0, Short: 1 } as const;
+
+export type StampEvidence = {
+  bundleHash: Hex;
+  rulesetHash: Hex;
+  token: string;
+  side: (typeof Side)[keyof typeof Side];
+  entryPriceE8: bigint;
+  verifiedTweets: number;
+  flags: number;
+};
+
+export function encodeCommitRulesetReport(rulesetHash: Hex, effectiveFrom: number): Hex {
+  return encodeAbiParameters(
+    [{ type: "uint8" }, { type: "bytes32" }, { type: "uint64" }],
+    [ReportKind.CommitRuleset, rulesetHash, BigInt(effectiveFrom)],
+  );
+}
+
+export function encodeStampEvidenceReport(evidence: StampEvidence): Hex {
+  return encodeAbiParameters(
+    [
+      { type: "uint8" },
+      { type: "bytes32" },
+      { type: "bytes32" },
+      { type: "bytes32" },
+      { type: "uint8" },
+      { type: "uint256" },
+      { type: "uint8" },
+      { type: "uint16" },
+    ],
+    [
+      ReportKind.StampEvidence,
+      evidence.bundleHash,
+      evidence.rulesetHash,
+      stringToHex(evidence.token, { size: 32 }),
+      evidence.side,
+      evidence.entryPriceE8,
+      evidence.verifiedTweets,
+      evidence.flags,
+    ],
+  );
 }
