@@ -57,7 +57,7 @@ export async function reconcileStamps({ db, ledger, now, startBlock }: Reconcile
       });
       stamped.push(trade.id);
     } else if (now - trade.submittedAt >= STALE_AFTER_MS) {
-      await repo.markFailed(db, trade.id);
+      await repo.markFailed(db, trade.id, "stamp-timeout");
       failed.push(trade.id);
     }
   }

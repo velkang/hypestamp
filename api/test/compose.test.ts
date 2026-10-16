@@ -27,16 +27,19 @@ beforeEach(async () => {
   app = createApp({
     chainState: async () => ({ chainNow: CHAIN_NOW, cooldown: 120 }),
     bridge: () => ({ commitRuleset, submitStamp: vi.fn() }),
+    bridgeUp: async () => true,
   });
 });
 afterEach(() => dispose());
 
+const OWNER = { Authorization: "Bearer s3cret" };
+
 const post = (path: string, body: unknown, headers: Record<string, string> = {}, env: Record<string, unknown> = {}) =>
   app.request(path, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body) }, { DB: db, ADMIN_TOKEN: "s3cret", ...env });
 
-describe("POST /v1/rulesets/preview", () => {
+describe("POST /v1/admin/rulesets/preview", () => {
   it("returns the exact ruleset that would be committed, its hash and when it takes effect", async () => {
-    const response = await post("/v1/rulesets/preview", draft);
+    const response = await post("/v1/admin/rulesets/preview", draft, OWNER);
     const { data } = (await response.json()) as { data: { ruleset: { effectiveFrom: number; extraction: { promptHash: string } }; hash: string; cooldown: number } };
     expect(response.status).toBe(200);
     expect(data.ruleset.effectiveFrom).toBe(CHAIN_NOW + 120 + 60);
@@ -46,7 +49,7 @@ describe("POST /v1/rulesets/preview", () => {
   });
 
   it("explains every invalid field", async () => {
-    const response = await post("/v1/rulesets/preview", { ...draft, sources: [], risk: { ...draft.risk, maxPositionPct: 500 } });
+    const response = await post("/v1/admin/rulesets/preview", { ...draft, sources: [], risk: { ...draft.risk, maxPositionPct: 500 } }, OWNER);
     const body = (await response.json()) as { success: boolean; error: string };
     expect(response.status).toBe(400);
     expect(body.error).toMatch(/sources/);
@@ -54,19 +57,19 @@ describe("POST /v1/rulesets/preview", () => {
   });
 });
 
-describe("POST /v1/rulesets", () => {
+describe("POST /v1/admin/rulesets", () => {
   it("refuses without the owner's admin token", async () => {
-    expect((await post("/v1/rulesets", draft)).status).toBe(401);
-    expect((await post("/v1/rulesets", draft, { Authorization: "Bearer wrong" })).status).toBe(401);
+    expect((await post("/v1/admin/rulesets", draft)).status).toBe(401);
+    expect((await post("/v1/admin/rulesets", draft, { Authorization: "Bearer wrong" })).status).toBe(401);
     expect(commitRuleset).not.toHaveBeenCalled();
   });
 
   it("is unavailable when no admin token is configured", async () => {
-    expect((await post("/v1/rulesets", draft, { Authorization: "Bearer s3cret" }, { ADMIN_TOKEN: undefined })).status).toBe(503);
+    expect((await post("/v1/admin/rulesets", draft, { Authorization: "Bearer s3cret" }, { ADMIN_TOKEN: undefined })).status).toBe(503);
   });
 
   it("records the ruleset as pending and hands it to CRE", async () => {
-    const response = await post("/v1/rulesets", draft, { Authorization: "Bearer s3cret" });
+    const response = await post("/v1/admin/rulesets", draft, { Authorization: "Bearer s3cret" });
     const { data } = (await response.json()) as { data: { hash: string; status: string; effectiveFrom: number } };
 
     expect(response.status).toBe(202);
@@ -78,13 +81,13 @@ describe("POST /v1/rulesets", () => {
 
   it("marks the ruleset failed when CRE does not accept the job", async () => {
     commitRuleset.mockRejectedValueOnce(new Error("bridge down"));
-    const response = await post("/v1/rulesets", draft, { Authorization: "Bearer s3cret" });
+    const response = await post("/v1/admin/rulesets", draft, { Authorization: "Bearer s3cret" });
     expect(response.status).toBe(502);
     expect((await repo.listRulesets(db))[0].status).toBe("failed");
   });
 
   it("rejects committing the same ruleset twice", async () => {
-    await post("/v1/rulesets", draft, { Authorization: "Bearer s3cret" });
-    expect((await post("/v1/rulesets", draft, { Authorization: "Bearer s3cret" })).status).toBe(409);
+    await post("/v1/admin/rulesets", draft, { Authorization: "Bearer s3cret" });
+    expect((await post("/v1/admin/rulesets", draft, { Authorization: "Bearer s3cret" })).status).toBe(409);
   });
 });

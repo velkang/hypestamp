@@ -1,12 +1,12 @@
 import { Link, useNavigate } from "react-router";
 import { ChevronIcon, TokenMark } from "../../components/icons";
 import { Badge } from "../../components/ui";
-import { tradeCode, usdFromE8, utcClock } from "../../lib/format";
+import { signed, tradeCode, usdFromE8, utcClock } from "../../lib/format";
 import type { Trade } from "../../lib/types";
 
 function StatusBadge({ trade }: { trade: Trade }) {
-  if (trade.status === "stamped") return <Badge tone="ok" icon="check">Stamped · replay verified</Badge>;
-  if (trade.status === "failed") return <Badge tone="bad" icon="cross">Refused by the ledger</Badge>;
+  if (trade.status === "stamped") return <Badge tone="ok" icon="check">{trade.closedAt !== null ? "Closed · entry stamped" : "Open · entry stamped"}</Badge>;
+  if (trade.status === "failed") return <Badge tone="bad" icon="cross">Not stamped</Badge>;
   return <Badge tone="quiet">Awaiting stamp</Badge>;
 }
 
@@ -17,7 +17,7 @@ export function TradesTable({ trades }: { trades: Trade[] }) {
       <table className="w-full min-w-[720px] border-collapse">
         <thead>
           <tr className="text-left text-[12.5px] text-ink-faint">
-            {["ID", "Trade", "Agreed", "Size", "Entry", "Status", "UTC"].map((h) => (
+            {["ID", "Trade", "Agreed", "Size", "Entry", "Status", "P&L", "UTC"].map((h) => (
               <th key={h} scope="col" className="border-y border-line px-4 py-2.5 font-medium first:pl-6">{h}</th>
             ))}
             <th scope="col" className="border-y border-line pr-6"><span className="sr-only">Open</span></th>
@@ -40,6 +40,9 @@ export function TradesTable({ trades }: { trades: Trade[] }) {
               <td className="whitespace-nowrap px-4">{t.request.trade.sizePct}%</td>
               <td className="whitespace-nowrap px-4">{usdFromE8(t.entryPriceE8)}</td>
               <td className="whitespace-nowrap px-4"><StatusBadge trade={t} /></td>
+              <td className={`whitespace-nowrap px-4 ${t.pnl ? t.pnl.returnPct >= 0 ? "text-bull" : "text-bear" : "text-ink-muted"}`}>
+                {t.pnl ? `${signed(t.pnl.returnPct)}%` : "—"}
+              </td>
               <td className="whitespace-nowrap px-4">{utcClock(t.submittedAt)}</td>
               <td className="pr-6 text-ink-faint"><ChevronIcon /></td>
             </tr>

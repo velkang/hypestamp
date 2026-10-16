@@ -1,12 +1,10 @@
-import type { ComplianceReport, Feed, Replay, RulesetDetail, RulesetSummary, Status, Trade } from "../../src/lib/types";
+import type { AdminOverview, ComplianceReport, Feed, Replay, RulesetDetail, RulesetSummary, Status, Trade } from "../../src/lib/types";
 
 export const NOW = Date.UTC(2026, 9, 15, 16, 30);
 const HASH = `0x57e7${"a".repeat(56)}a766`;
 
 export const status: Status = {
   activeRuleset: { hash: HASH, effectiveFrom: (NOW - 3_600_000) / 1000, model: "gpt-6-luna", sources: 2, windowHours: 12 },
-  lastSyncedBlock: "11921132",
-  lastFetchAt: NOW - 120_000,
   demo: true,
   trades: { submitted: 0, stamped: 1, failed: 1 },
 };
@@ -16,6 +14,7 @@ const trade = (over: Partial<Trade>): Trade => ({
   bundleHash: `0x2bc4${"b".repeat(56)}3840`, entryPriceE8: "237148000000", txHash: "demo",
   submittedAt: NOW - 600_000, stampedAt: NOW - 500_000, isDemo: true,
   request: { rulesetHash: HASH, signal: { token: "ETH", coingeckoId: "ethereum", side: "long" }, tweetIds: ["11", "12"], extractionsHash: `0xd429${"c".repeat(56)}aab7`, trade: { sizePct: 4.25, stopLossPct: 8, takeProfitPct: 20 }, flags: 0, observedAt: (NOW - 600_000) / 1000 },
+  openTokens: [], failureReason: null, closedAt: null, exitPriceE8: null, exitPriceAt: null, exitReason: null, pnl: null,
   flags: [], explanation: "ETH long: 2 KOLs within 12h (cobie 0.9 conv 0.80, CryptoHayes 0.8 conv 0.85); trust 1.70 >= 1.3",
   kols: [{ handle: "cobie", trustWeight: 0.9, tweetId: "11", sentiment: 0.8, conviction: 0.8 }, { handle: "CryptoHayes", trustWeight: 0.8, tweetId: "12", sentiment: 0.9, conviction: 0.85 }],
   ...over,
@@ -60,7 +59,7 @@ export const feed: Feed = {
   ],
 };
 
-export const rulesets: RulesetSummary[] = [{ hash: HASH, effectiveFrom: (NOW - 3_600_000) / 1000, model: "gpt-6-luna", sources: 2, committedAt: NOW - 3_780_000, status: "confirmed", commitTx: null }];
+export const rulesets: RulesetSummary[] = [{ hash: HASH, effectiveFrom: (NOW - 3_600_000) / 1000, model: "gpt-6-luna", sources: 2, committedAt: NOW - 3_780_000, commitTx: null }];
 
 export const rulesetDetail: RulesetDetail = {
   hash: HASH,
@@ -85,6 +84,12 @@ export const report: ComplianceReport = {
 
 export const preview = { ruleset: rulesetDetail.ruleset, hash: `0x7f3e${"e".repeat(56)}12ab`, cooldown: 120 };
 
+export const adminOverview: AdminOverview = {
+  agent: { lastFetchAt: NOW - 120_000, lastSyncedBlock: "11921132", bridgeUp: true },
+  trades: { submitted: 0, stamped: 1, failed: 1 },
+  rulesets: [{ ...rulesets[0], status: "confirmed" }],
+};
+
 export const API: Record<string, unknown> = {
   "/v1/status": status,
   "/v1/feed": feed,
@@ -95,6 +100,7 @@ export const API: Record<string, unknown> = {
   "/v1/rulesets": rulesets,
   [`/v1/rulesets/${HASH}`]: rulesetDetail,
   "/v1/reports/compliance": report,
-  "POST /v1/rulesets/preview": preview,
-  "POST /v1/rulesets": { hash: preview.hash, effectiveFrom: NOW / 1000 + 180, status: "pending" },
+  "/v1/admin/overview": adminOverview,
+  "POST /v1/admin/rulesets/preview": preview,
+  "POST /v1/admin/rulesets": { hash: preview.hash, effectiveFrom: NOW / 1000 + 180, status: "pending" },
 };

@@ -8,7 +8,8 @@ const HASH = /^0x[0-9a-f]{64}$/;
 
 export const rulesets = new Hono<AppEnv>()
   .get("/", async (c) => {
-    const rows = await repo.listRulesets(c.env.DB);
+    // Only rulesets the ledger has recorded; pending and failed commits are operator business.
+    const rows = (await repo.listRulesets(c.env.DB)).filter((row) => row.status === "confirmed");
     return ok(
       c,
       rows.map((row) => {
@@ -18,7 +19,6 @@ export const rulesets = new Hono<AppEnv>()
           effectiveFrom: row.effectiveFrom,
           model: ruleset.extraction.model,
           sources: ruleset.sources.length,
-          status: row.status,
           commitTx: row.commitTx,
           committedAt: row.committedAt,
         };

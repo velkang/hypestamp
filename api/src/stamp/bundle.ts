@@ -23,6 +23,8 @@ export const stampRequestSchema = z.strictObject({
     .max(MAX_TWEETS)
     .refine((ids) => new Set(ids).size === ids.length, "tweet IDs must be unique"),
   extractionsHash: hash32,
+  // Optional only for backwards compatibility with stamps created before risk snapshots.
+  riskContextHash: hash32.optional(),
   trade: z.strictObject({
     sizePct: percent,
     stopLossPct: percent,

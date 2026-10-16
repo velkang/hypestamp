@@ -39,9 +39,9 @@ export function FlagsPanel() {
         <article key={t.id} className="grid grid-cols-[32px_1fr] gap-3 border-t border-line px-6 py-3.5">
           <span className="grid size-8 place-items-center rounded-lg bg-action/25 text-proof"><ShieldIcon /></span>
           <div>
-            <b className="block font-semibold">Ledger refused {tradeCode(t.id)}</b>
-            <p className="my-0.5 text-[13.5px] text-ink-muted">Submitted at {utcClockSeconds(t.submittedAt)} UTC; the ledger did not record it.</p>
-            <small className="text-[12.5px] text-ink-faint">The rules worked as committed · <Link to={`/trades/${t.id}`}>View trade</Link></small>
+            <b className="block font-semibold">No stamp for {tradeCode(t.id)}</b>
+            <p className="my-0.5 text-[13.5px] text-ink-muted">Submitted at {utcClockSeconds(t.submittedAt)} UTC; no matching stamp is recorded.</p>
+            <small className="text-[12.5px] text-ink-faint">Submission failed or no matching stamp arrived · <Link to={`/trades/${t.id}`}>View trade</Link></small>
           </div>
         </article>
       ))}

@@ -91,8 +91,8 @@ export function ComposePage() {
 
   return (
     <>
-      <PageHeader title="Compose a ruleset" back={<Link to="/rulesets" className="text-[13.5px]">← Pre-committed rules</Link>}>
-        Starts from the ruleset in force. Anyone can draft and preview; committing needs the owner token, and the new rules only take effect after the on-chain cooldown.
+      <PageHeader title="Compose a ruleset" back={<Link to="/admin" className="text-[13.5px]">← Console</Link>}>
+        Starts from the ruleset in force. The new rules only take effect after the on-chain cooldown.
       </PageHeader>
       {loading && <Panel><Loading label="the ruleset in force" /></Panel>}
       {status.isError && <Panel><Failure what="the agent status" error={status.error} /></Panel>}

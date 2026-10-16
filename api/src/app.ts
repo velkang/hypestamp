@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { createPublicClient, http, parseAbi, type Hex } from "viem";
 import { sepolia } from "viem/chains";
-import { composeRoutes, type ComposeDeps } from "./routes/compose";
+import { adminRoutes, type AdminDeps } from "./routes/admin";
 import { feed } from "./routes/feed";
 import { reports } from "./routes/reports";
 import { fail, type AppBindings, type AppEnv } from "./routes/respond";
@@ -19,7 +19,7 @@ function required(env: AppBindings, name: keyof AppBindings): string {
 const cooldownAbi = parseAbi(["function cooldown() view returns (uint64)"]);
 
 // The ledger's own clock and cooldown decide the earliest effectiveFrom it accepts.
-const liveDeps: ComposeDeps = {
+const liveDeps: AdminDeps = {
   async chainState(env) {
     const client = createPublicClient({ chain: sepolia, transport: http(required(env, "SEPOLIA_RPC_URL")) });
     const [block, cooldown] = await Promise.all([
@@ -29,14 +29,18 @@ const liveDeps: ComposeDeps = {
     return { chainNow: Number(block.timestamp), cooldown: Number(cooldown) };
   },
   bridge: (env) => createBridgeClient({ fetch, url: required(env, "BRIDGE_URL"), token: required(env, "BRIDGE_TOKEN") }),
+  async bridgeUp(env) {
+    const response = await fetch(`${required(env, "BRIDGE_URL")}/health`, { signal: AbortSignal.timeout(2000) });
+    return response.ok;
+  },
 };
 
-export function createApp(deps: ComposeDeps = liveDeps) {
+export function createApp(deps: AdminDeps = liveDeps) {
   return new Hono<AppEnv>()
     .get("/health", (c) => c.json({ status: "ok" }))
     .route("/v1/status", status)
     .route("/v1/feed", feed)
-    .route("/v1/rulesets", composeRoutes(deps))
+    .route("/v1/admin", adminRoutes(deps))
     .route("/v1/rulesets", rulesets)
     .route("/v1/trades", trades)
     .route("/v1/reports", reports)

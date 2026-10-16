@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sourceStats } from "../src/features/sources/sourceStats";
-import { feed, NOW, rulesetDetail } from "./helpers/fixtures";
+import { feed, NOW, rulesetDetail, tradeDetail, trades } from "./helpers/fixtures";
 import { renderAt } from "./helpers/render";
 
 beforeEach(() => {
@@ -21,12 +21,12 @@ describe("Overview", () => {
     expect(await screen.findByText("T-001 matches its stamp")).toBeInTheDocument();
     expect(screen.getByText(/Demo data\./)).toBeInTheDocument();
     expect(await screen.findByText("No disclosure marker found")).toBeInTheDocument();
-    expect(screen.getByText("Ledger refused T-002")).toBeInTheDocument();
+    expect(screen.getByText("No stamp for T-002")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /Posts from 2 sources/ })).toBeInTheDocument();
   });
 
   it("explains that nothing trades before a ruleset is in force", async () => {
-    renderAt("/", { "/v1/status": { activeRuleset: null, lastSyncedBlock: null, lastFetchAt: null, demo: false, trades: { submitted: 0, stamped: 0, failed: 0 } }, "/v1/feed": { window: null, posts: [] }, "/v1/trades": [] });
+    renderAt("/", { "/v1/status": { activeRuleset: null, demo: false, trades: { submitted: 0, stamped: 0, failed: 0 } }, "/v1/feed": { window: null, posts: [] }, "/v1/trades": [] });
     expect(await screen.findByText(/No ruleset is in force yet/)).toBeInTheDocument();
     expect(await screen.findByText("No trades yet")).toBeInTheDocument();
     expect(screen.queryByText(/Demo data\./)).not.toBeInTheDocument();
@@ -34,16 +34,19 @@ describe("Overview", () => {
 });
 
 describe("Trades", () => {
-  it("lists trades and filters them by status", async () => {
+  it("lists every trade with its stamp status", async () => {
     renderAt("/trades");
     const table = await screen.findByRole("table");
     expect(within(table).getByText("T-001")).toBeInTheDocument();
-    expect(within(table).getByText("Refused by the ledger")).toBeInTheDocument();
+    expect(within(table).getByText("Not stamped")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Filter trades" })).not.toBeInTheDocument();
+  });
 
-    await userEvent.click(screen.getByRole("button", { name: /Awaiting stamp/ }));
-    expect(screen.getByText("Nothing is waiting for a stamp.")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /Stamped/ }));
-    expect(screen.getAllByRole("row")).toHaveLength(2);
+  it("shows closed position P&L without claiming replay has passed", async () => {
+    renderAt("/trades", { "/v1/trades": [{ ...trades[1], closedAt: NOW, pnl: { returnPct: -9, bookContributionPct: -0.3825 } }] });
+    expect(await screen.findByText("Closed · entry stamped")).toBeInTheDocument();
+    expect(screen.getByText("−9.00%")).toBeInTheDocument();
+    expect(screen.queryByText(/replay verified/)).not.toBeInTheDocument();
   });
 
   it("shows an actionable error when the API fails", async () => {
@@ -56,12 +59,30 @@ describe("Trade evidence", () => {
   it("shows the replay verdict, its four checks, the reasoning, cited posts and record", async () => {
     renderAt("/trades/1");
     expect(await screen.findByRole("heading", { name: "Replay matches the on-chain record" })).toBeInTheDocument();
-    for (const check of ["Rules committed before the trade", "Signal reproduces from saved posts", "Stamp request rebuilds identically", "Bundle hash matches the ledger"]) {
+    for (const check of ["Ruleset JSON matches its committed hash", "Signal reproduces from saved posts", "Stamp request rebuilds identically", "Bundle hash matches the ledger"]) {
       expect(screen.getByText(check)).toBeInTheDocument();
     }
     expect(screen.getByText(/trust 1.70 >= 1.3/)).toBeInTheDocument();
     expect(screen.getByText("Rotating into ETH here.")).toBeInTheDocument();
     expect(screen.getByText("demo data, no transaction")).toBeInTheDocument();
+  });
+
+  it("shows closed position prices, exit reason and realized P&L", async () => {
+    renderAt("/trades/1", { "/v1/trades/1": {
+      ...tradeDetail, closedAt: NOW, exitPriceE8: "284577600000", exitPriceAt: NOW - 1000,
+      exitReason: "take-profit", pnl: { returnPct: 20, bookContributionPct: 0.85 },
+    } });
+    expect(await screen.findByRole("heading", { name: "Closed paper position" })).toBeInTheDocument();
+    expect(screen.getByText("$2,845.78 · Take profit")).toBeInTheDocument();
+    expect(screen.getByText("+20.00%")).toBeInTheDocument();
+    expect(screen.getByText("+0.85 percentage points")).toBeInTheDocument();
+    expect(screen.getByText(/recorded off-chain/)).toBeInTheDocument();
+  });
+
+  it("explains a stamp timeout without claiming a ledger refusal", async () => {
+    renderAt("/trades/1", { "/v1/trades/1": { ...tradeDetail, status: "failed", failureReason: "stamp-timeout" } });
+    expect(await screen.findByText("No matching stamp found within 30 minutes")).toBeInTheDocument();
+    expect(screen.queryByText("Refused by the ledger")).not.toBeInTheDocument();
   });
 
   it("reports an unknown trade", async () => {
@@ -98,7 +119,7 @@ describe("Reports", () => {
     renderAt("/reports");
     expect(await screen.findByText("0 MISMATCHES")).toBeInTheDocument();
     expect(screen.getByText(/1 practice trade was stamped on-chain/)).toBeInTheDocument();
-    expect(screen.getByText(/The ledger refused 1 trade, as its rules require/)).toBeInTheDocument();
+    expect(screen.getByText(/1 trade submission has no matching stamp recorded/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Download JSON/ })).toHaveAttribute("href", "/v1/reports/compliance");
   });
 });
@@ -109,6 +130,16 @@ describe("sourceStats", () => {
     expect(stats[0]).toEqual({ handle: "Cobie", trustWeight: 0.9, posts: 2, bullish: 1, bearish: 1, undisclosedPromo: 0, cited: 1, lastPostAt: NOW - 6 * 3_600_000 });
     expect(stats[1]).toMatchObject({ posts: 0, lastPostAt: null });
     expect(rulesetDetail.verified).toBe(true);
+  });
+});
+
+describe("Public shell", () => {
+  it("has no operator links or controls", async () => {
+    renderAt("/rulesets");
+    await screen.findByText("In force");
+    expect(screen.queryByRole("link", { name: /Compose/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+    expect(screen.queryByText(/agent ran/)).not.toBeInTheDocument();
   });
 });
 

@@ -6,7 +6,6 @@
   "scripts": {
     "check": "tsc --noEmit",
     "test": "vitest run",
-    "commit-ruleset": "bun scripts/commit-ruleset.ts",
     "db:migrate:local": "wrangler d1 migrations apply hypestamp --local"
   },
   "dependencies": {

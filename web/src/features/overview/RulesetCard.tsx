@@ -16,7 +16,7 @@ const MARKER: Record<Stop["kind"], string> = {
 function stopLabel(stop: Stop): [string, string] {
   switch (stop.kind) {
     case "committed": return [utcClockSeconds(stop.at), "committed"];
-    case "refused": return [utcClockSeconds(stop.at), `${tradeCode(stop.tradeId!)} refused`];
+    case "refused": return [utcClockSeconds(stop.at), `${tradeCode(stop.tradeId!)} not stamped`];
     case "effective": return [utcClockSeconds(stop.at), "in force"];
     case "trade": return [utcClock(stop.at), tradeCode(stop.tradeId!)];
     case "now": return [utcClock(stop.at), "now · unchanged"];
@@ -24,13 +24,15 @@ function stopLabel(stop: Stop): [string, string] {
 }
 
 function StopMark({ stop }: { stop: Stop }) {
-  const [time, caption] = stopLabel(stop);
+  const [time, label] = stopLabel(stop);
+  const failed = stop.kind === "refused" || stop.status === "failed";
+  const caption = stop.status === "failed" && stop.kind === "trade" ? `${label} not stamped` : label;
   const align = stop.position === 0 ? "items-start" : stop.position === 100 ? "items-end -translate-x-full" : "items-center -translate-x-1/2";
   const body = (
     <>
-      <i className={`grid size-5 place-items-center rounded-full border-2 ${MARKER[stop.kind]}`}>
-        {stop.kind === "refused" && <CrossIcon size={10} />}
-        {stop.kind === "trade" && <CheckIcon size={10} />}
+      <i className={`grid size-5 place-items-center rounded-full border-2 ${failed ? MARKER.refused : MARKER[stop.kind]}`}>
+        {failed && <CrossIcon size={10} />}
+        {stop.kind === "trade" && !failed && <CheckIcon size={10} />}
       </i>
       <b className="font-semibold">{time}</b>
       <span className="text-ink-muted">{caption}</span>
@@ -65,7 +67,7 @@ export function RulesetCard() {
   if (!active || committedAt === undefined) {
     return <Panel className="p-6"><p className="m-0 text-ink-muted">No ruleset is in force yet. The agent will not trade until one is committed and its cooldown has passed.</p></Panel>;
   }
-  const track = buildTrack({ committedAt, effectiveFrom: active.effectiveFrom, trades: trades.data ?? [], now: Date.now() });
+  const track = buildTrack({ committedAt, effectiveFrom: active.effectiveFrom, trades: (trades.data ?? []).filter((t) => t.rulesetHash === active.hash), now: Date.now() });
   const firstRefusal = track.before.find((s) => s.kind === "refused");
   const r = detail.data?.ruleset;
 
@@ -79,7 +81,7 @@ export function RulesetCard() {
       </div>
       <h1 className="mt-3.5 mb-1 text-[26px] font-bold tracking-[-0.02em]">Rules were locked on-chain before any trade</h1>
       <p className="m-0 max-w-[70ch] text-ink-muted">
-        Committed, held through the cooldown, then used.{firstRefusal ? " The ledger refused the trade that tried to go early." : ""}
+        Committed, held through the cooldown, then used.{firstRefusal ? " An earlier submission was not stamped." : ""}
       </p>
       <div className="relative mt-6 mb-2 overflow-x-auto">
         <div className="grid min-w-[620px] grid-cols-[44fr_18px_56fr] items-start px-1">

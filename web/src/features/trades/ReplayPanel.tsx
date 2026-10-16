@@ -4,7 +4,7 @@ import { useReplay } from "../../lib/api";
 import type { ReplayCheck } from "../../lib/types";
 
 const CHECK_TITLES: Record<ReplayCheck["name"], string> = {
-  ruleset: "Rules committed before the trade",
+  ruleset: "Ruleset JSON matches its committed hash",
   signal: "Signal reproduces from saved posts",
   request: "Stamp request rebuilds identically",
   bundle: "Bundle hash matches the ledger",
@@ -13,7 +13,7 @@ const CHECK_TITLES: Record<ReplayCheck["name"], string> = {
 const VERDICT = {
   match: { title: "Replay matches the on-chain record", body: "Anyone can re-derive this trade from its saved inputs and get the same stamp.", tone: "border-action bg-action/15 text-proof" },
   mismatch: { title: "Replay does not match", body: "At least one check failed. The stored inputs no longer reproduce what was stamped.", tone: "border-bear/60 bg-bear/10 text-bear-ink" },
-  pending: { title: "Waiting for the on-chain stamp", body: "The decision replays; the bundle check completes once Chainlink CRE stamps it.", tone: "border-line-strong bg-raised text-ink" },
+  pending: { title: "Replay is incomplete", body: "A stamp or historical decision inputs are missing. See the pending checks below.", tone: "border-line-strong bg-raised text-ink" },
 } as const;
 
 function CheckRow({ check }: { check: ReplayCheck }) {

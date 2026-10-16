@@ -9,11 +9,11 @@ function summary(r: ComplianceReport): string {
   const { stamped, failed } = r.trades;
   const parts = [
     `${stamped} practice trade${stamped === 1 ? " was" : "s were"} stamped on-chain under rulesets committed before they took effect.`,
-    r.replay.mismatch === 0
+    r.replay.mismatch === 0 && r.replay.pending === 0
       ? `Every trade replayed from its stored inputs reproduces the record Chainlink CRE wrote to the ledger.`
-      : `${r.replay.mismatch} trade${r.replay.mismatch === 1 ? "" : "s"} no longer reproduce${r.replay.mismatch === 1 ? "s" : ""} the on-chain record and need review.`,
+      : `${r.replay.mismatch} replay mismatches and ${r.replay.pending} incomplete replays need review.`,
   ];
-  if (failed) parts.push(`The ledger refused ${failed} trade${failed === 1 ? "" : "s"}, as its rules require.`);
+  if (failed) parts.push(`${failed} trade submission${failed === 1 ? " has" : "s have"} no matching stamp recorded; this does not establish a ledger refusal.`);
   const flagged = Object.values(r.flagged).reduce((a, b) => a + b, 0);
   parts.push(flagged ? `${flagged} trade${flagged === 1 ? " carries" : "s carry"} an evidence flag.` : "No trade carries an evidence flag.");
   return parts.join(" ");
@@ -53,7 +53,7 @@ function Document({ r, demo }: { r: ComplianceReport; demo: boolean }) {
         <h2 className="m-0 mb-2 text-lg font-semibold">Findings</h2>
         <table className="w-full border-collapse text-[14px]"><tbody>
           <Row label="Rulesets committed" value={r.rulesets} />
-          <Row label="Trades stamped / awaiting / refused" value={`${r.trades.stamped} / ${r.trades.submitted} / ${r.trades.failed}`} />
+          <Row label="Trades stamped / awaiting / not stamped" value={`${r.trades.stamped} / ${r.trades.submitted} / ${r.trades.failed}`} />
           <Row label="Replay: match / mismatch / pending" value={`${r.replay.match} / ${r.replay.mismatch} / ${r.replay.pending}`} strong />
           <Row label="Flagged: undisclosed promo / coordinated burst / paid marker" value={`${r.flagged["undisclosed-promo"] ?? 0} / ${r.flagged["coordinated-burst"] ?? 0} / ${r.flagged["paid-marker"] ?? 0}`} />
         </tbody></table>

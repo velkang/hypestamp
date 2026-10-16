@@ -40,21 +40,16 @@ describe("GET /v1/status", () => {
     const { body } = await get("/v1/status");
     expect(body.data).toEqual({
       activeRuleset: null,
-      lastSyncedBlock: null,
-      lastFetchAt: null,
       demo: false,
       trades: { submitted: 0, stamped: 0, failed: 0 },
     });
   });
 
-  it("summarises the active ruleset, last fetch and trade counts", async () => {
+  it("summarises the active ruleset and trade counts", async () => {
     await seedCycle();
-    await repo.setLastSyncedBlock(db, 11_921_132n);
     const { body } = await get("/v1/status");
     expect(body.data).toMatchObject({
       activeRuleset: { hash: RULESET_HASH, effectiveFrom: ruleset.effectiveFrom, model: "gpt-6-luna", sources: 3, windowHours: 6 },
-      lastSyncedBlock: "11921132",
-      lastFetchAt: NOW,
       demo: false,
       trades: { submitted: 1, stamped: 0, failed: 0 },
     });

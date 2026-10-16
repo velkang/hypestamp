@@ -7,14 +7,13 @@ import type { RulesetDetail, RulesetSummary } from "../../lib/types";
 
 function Timeline({ rulesets, selected }: { rulesets: RulesetSummary[]; selected: string }) {
   const now = Date.now();
-  const inForce = rulesets.findIndex((x) => x.status === "confirmed" && x.effectiveFrom * 1000 <= now);
+  const inForce = rulesets.findIndex((x) => x.effectiveFrom * 1000 <= now);
   return (
     <ol className="m-0 flex list-none flex-col gap-3 p-0">
       {rulesets.map((r, i) => {
         const effective = r.effectiveFrom * 1000;
-        const state = r.status === "pending" ? "Awaiting chain" : r.status === "failed" ? "Not committed"
-          : effective > now ? "In cooldown" : i === inForce ? "In force" : "Superseded";
-        const tone = state === "In force" ? "ok" : state === "Not committed" ? "bad" : state === "Superseded" ? "quiet" : "flag";
+        const state = effective > now ? "In cooldown" : i === inForce ? "In force" : "Superseded";
+        const tone = state === "In force" ? "ok" : state === "In cooldown" ? "flag" : "quiet";
         return (
           <li key={r.hash}>
             <Link to={`/rulesets#${r.hash}`} aria-current={r.hash === selected ? "true" : undefined}
@@ -86,12 +85,9 @@ export function RulesetsPage() {
 
   return (
     <>
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <PageHeader title="Pre-committed rules">
-          Like a Rule 10b5-1 trading plan, every ruleset is published on-chain before it takes effect and must wait out a cooldown. The ledger refuses any trade not made under the ruleset in force.
-        </PageHeader>
-        <Link to="/rulesets/new" className="inline-flex h-10 items-center rounded-[9px] bg-action px-4 font-semibold text-white hover:bg-action-hover hover:no-underline">Compose new ruleset</Link>
-      </div>
+      <PageHeader title="Pre-committed rules">
+        Like a Rule 10b5-1 trading plan, every ruleset is published on-chain before it takes effect and must wait out a cooldown. The ledger refuses any trade not made under the ruleset in force.
+      </PageHeader>
       {rulesets.isPending && <Panel><Loading label="rulesets" /></Panel>}
       {rulesets.isError && <Panel><Failure what="rulesets" error={rulesets.error} /></Panel>}
       {rulesets.data?.length === 0 && <Panel><Empty title="No rulesets yet">Commit a ruleset to start the agent; it takes effect after the cooldown.</Empty></Panel>}

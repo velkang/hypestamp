@@ -47,6 +47,7 @@ Bun.serve({
   port: PORT,
   async fetch(request) {
     const url = new URL(request.url);
+    if (request.method === "GET" && url.pathname === "/health") return new Response("ok");
     if (request.method !== "POST" || url.pathname !== "/submit") return new Response("Not found", { status: 404 });
     if (!authorize(request.headers.get("Authorization"), TOKEN)) return new Response("Unauthorized", { status: 401 });
 

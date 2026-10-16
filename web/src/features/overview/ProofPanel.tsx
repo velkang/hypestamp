@@ -10,7 +10,7 @@ function ProofRow({ trade }: { trade: Trade }) {
   const replay = useReplay(trade.id);
   const verdict = replay.data?.verdict;
   const ok = verdict === "match";
-  const text = verdict === "match" ? "matches its stamp" : verdict === "mismatch" ? "does not match" : "replaying…";
+  const text = verdict === "match" ? "matches its stamp" : verdict === "mismatch" ? "does not match" : verdict === "pending" ? "has incomplete replay" : replay.isError ? "replay unavailable" : "replaying…";
   return (
     <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 border-t border-line py-3">
       <span className={`grid size-6 place-items-center rounded-md ${ok ? "bg-action/25 text-proof" : "bg-bear/15 text-bear"}`}>

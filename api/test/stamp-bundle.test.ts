@@ -67,6 +67,15 @@ describe("bundleHash", () => {
     expect(bundleHash(request, tampered, 1_825_000_000n)).not.toBe(bundleHash(request, tweets, 1_825_000_000n));
   });
 
+  it("binds the historical risk context into the bundle while accepting older requests", () => {
+    const empty = keccak256(toBytes(canonicalJson([])));
+    const occupied = keccak256(toBytes(canonicalJson(["BTC"])));
+    const newer = { ...request, riskContextHash: empty };
+    expect(parseStampRequest(newer)).toEqual(newer);
+    expect(bundleHash(newer, tweets, 1n)).not.toBe(bundleHash({ ...newer, riskContextHash: occupied }, tweets, 1n));
+    expect(bundleHash(newer, tweets, 1n)).not.toBe(bundleHash(request, tweets, 1n));
+  });
+
   it("changes when the entry price changes", () => {
     expect(bundleHash(request, tweets, 1n)).not.toBe(bundleHash(request, tweets, 1_825_000_000n));
   });

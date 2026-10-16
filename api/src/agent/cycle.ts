@@ -45,11 +45,13 @@ export async function runAgentCycle(rawDeps: CycleDeps): Promise<CycleResult> {
   const extractions = await repo.extractionsSince(deps.db, ruleset.extraction.promptHash, windowStart, deps.now);
   const submitted: string[] = [];
   for (const signal of converge(ruleset, extractions, deps.now)) {
-    const decision = decideTrade(ruleset, signal, await repo.openTradeTokens(deps.db));
+    const openTokens = await repo.openTradeTokens(deps.db);
+    const decision = decideTrade(ruleset, signal, openTokens);
     if (!decision.accepted) continue;
     const tweets = await repo.tweetsByIds(deps.db, signal.kols.map((k) => k.tweetId));
-    const request = buildStampRequest(ruleset, hash, signal, decision.trade, extractions, tweets, deps.now);
-    const ok = await submitTrade(deps, hash, signal, request, errors);
+    const request = buildStampRequest(ruleset, hash, signal, decision.trade, extractions, tweets, deps.now, openTokens);
+    if (await repo.previouslyTradedSignal(deps.db, signal.token, signal.side, request.tweetIds)) continue;
+    const ok = await submitTrade(deps, hash, signal, request, openTokens, errors);
     if (ok) submitted.push(signal.token);
   }
 
@@ -98,6 +100,7 @@ export function buildStampRequest(
   extractions: Extraction[],
   tweets: TweetFields[],
   now: number,
+  openTokens?: string[],
 ): StampRequest {
   const tweetIds = citedTweetIds(signal);
   const cited = extractions
@@ -105,6 +108,7 @@ export function buildStampRequest(
     .sort((a, b) => (a.tweetId < b.tweetId ? -1 : 1));
   return {
     rulesetHash,
+    ...(openTokens === undefined ? {} : { riskContextHash: keccak256(toBytes(canonicalJson(openTokens))) }),
     signal: { token: trade.token, coingeckoId: trade.coingeckoId, side: trade.side },
     tweetIds,
     extractionsHash: keccak256(toBytes(canonicalJson(cited))),
@@ -121,6 +125,7 @@ async function submitTrade(
   rulesetHash: string,
   signal: Signal,
   request: StampRequest,
+  openTokens: string[],
   errors: string[],
 ): Promise<boolean> {
   const id = await repo.insertSubmittedTrade(deps.db, {
@@ -130,6 +135,7 @@ async function submitTrade(
     requestJson: JSON.stringify(request),
     signalJson: JSON.stringify(signal),
     submittedAt: deps.now,
+    openTokens,
   });
   try {
     await deps.submitStamp(request);

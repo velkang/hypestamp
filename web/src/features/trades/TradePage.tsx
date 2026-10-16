@@ -9,7 +9,7 @@ import { ReplayPanel } from "./ReplayPanel";
 
 function Header({ trade }: { trade: Trade }) {
   const badge = trade.status === "stamped" ? <Badge tone="ok" icon="check">Stamped on-chain</Badge>
-    : trade.status === "failed" ? <Badge tone="bad" icon="cross">Refused by the ledger</Badge>
+    : trade.status === "failed" ? <Badge tone="bad" icon="cross">Not stamped</Badge>
     : <Badge tone="quiet">Awaiting stamp</Badge>;
   return (
     <div className="flex flex-col gap-2">
@@ -78,11 +78,33 @@ function CitedPosts({ trade }: { trade: Trade }) {
   );
 }
 
+function PositionPanel({ trade }: { trade: Trade }) {
+  if (trade.status !== "stamped") return null;
+  return (
+    <Panel label="Paper position" className="px-6 py-5">
+      <h2 className="m-0 mb-3 text-base font-semibold">{trade.closedAt === null ? "Open paper position" : "Closed paper position"}</h2>
+      {trade.pnl && trade.closedAt !== null ? (
+        <dl className="m-0 grid gap-3 text-[14px]">
+          <div><dt className="text-ink-muted">Exit</dt><dd className="m-0">{usdFromE8(trade.exitPriceE8)} · {trade.exitReason === "stop-loss" ? "Stop loss" : "Take profit"}</dd></div>
+          <div><dt className="text-ink-muted">Closed</dt><dd className="m-0">{utcDate(trade.closedAt)}, {utcClock(trade.closedAt)} UTC</dd></div>
+          <div><dt className="text-ink-muted">Realized P&L on position</dt><dd className={`m-0 font-semibold ${trade.pnl.returnPct >= 0 ? "text-bull" : "text-bear"}`}>{signed(trade.pnl.returnPct)}%</dd></div>
+          <div><dt className="text-ink-muted">Contribution to book</dt><dd className="m-0">{signed(trade.pnl.bookContributionPct)} percentage points</dd></div>
+          {trade.exitPriceAt !== null && <div><dt className="text-ink-muted">Price updated</dt><dd className="m-0">{utcDate(trade.exitPriceAt)}, {utcClock(trade.exitPriceAt)} UTC</dd></div>}
+        </dl>
+      ) : <p className="m-0 text-[14px] text-ink-muted">{trade.isDemo ? "Illustrative position; excluded from automatic exits." : "The agent checks the committed stop and target every five minutes."}</p>}
+      <p className="m-0 mt-3 text-[13px] text-ink-muted">Paper exits use observed CoinGecko prices and are recorded off-chain. Fills can pass the stop or target between checks. P&L excludes fees and funding.</p>
+    </Panel>
+  );
+}
+
 function RecordPanel({ trade }: { trade: Trade }) {
   const rows: [string, React.ReactNode][] = [
     ["Bundle hash", trade.bundleHash ? <Hash value={trade.bundleHash} full /> : "not stamped yet"],
     ["Ruleset", <Link to={`/rulesets#${trade.rulesetHash}`} className="font-mono text-[12.5px]">{trade.rulesetHash.slice(0, 10)}…</Link>],
     ["Extractions hash", <Hash value={trade.request.extractionsHash} />],
+    ["Open positions at decision", trade.openTokens === null ? "not saved for this older trade" : trade.openTokens.join(", ") || "none"],
+    ...(trade.request.riskContextHash ? [["Risk context hash", <Hash value={trade.request.riskContextHash} />] as [string, React.ReactNode]] : []),
+    ...(trade.status === "failed" ? [["Submission outcome", trade.failureReason === "submission-failed" ? "Bridge submission failed" : trade.failureReason === "stamp-timeout" ? "No matching stamp found within 30 minutes" : "No matching stamp recorded; cause unknown"] as [string, React.ReactNode]] : []),
     ["Entry price", trade.entryPriceE8 ? `${usdFromE8(trade.entryPriceE8)} · median of the oracle network` : "not filled"],
     ["Evidence flags", trade.flags.length ? trade.flags.join(", ") : "none"],
     ["Transaction", isRealTx(trade.txHash) ? <a href={txUrl(trade.txHash)} target="_blank" rel="noreferrer" className="font-mono text-[12.5px]">{trade.txHash.slice(0, 10)}… ↗</a> : trade.isDemo ? "demo data, no transaction" : "pending"],
@@ -112,7 +134,7 @@ export function TradePage() {
           <WhyPanel trade={trade.data} />
           <CitedPosts trade={trade.data} />
         </div>
-        <RecordPanel trade={trade.data} />
+        <div className="flex min-w-0 flex-col gap-5"><PositionPanel trade={trade.data} /><RecordPanel trade={trade.data} /></div>
       </div>
     </>
   );

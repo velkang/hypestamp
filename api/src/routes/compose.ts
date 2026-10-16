@@ -5,7 +5,6 @@ import { parseDraft, RulesetValidationError } from "../rulesets/schema";
 import * as store from "../rulesets/store";
 import type { Ruleset } from "../rulesets/schema";
 import { rulesetHash } from "../stamp/encoding";
-import { isOwner } from "./admin";
 import { fail, ok, type AppBindings, type AppEnv } from "./respond";
 
 export type ComposeDeps = {
@@ -20,16 +19,13 @@ async function prepare(deps: ComposeDeps, env: AppBindings, body: unknown) {
   return { ruleset, hash: rulesetHash(ruleset), cooldown: chain.cooldown };
 }
 
-// Anyone can preview a draft; only the owner can commit one, because each commit is
-// a transaction the owner's wallet pays for through the CRE bridge.
+// Mounted behind the owner check in admin.ts: each commit is a transaction the
+// owner's wallet pays for through the CRE bridge.
 export function composeRoutes(deps: ComposeDeps) {
   return new Hono<AppEnv>()
     .onError((error, c) => (error instanceof RulesetValidationError ? fail(c, 400, error.message) : fail(c, 500, "internal error")))
     .post("/preview", async (c) => ok(c, await prepare(deps, c.env, await c.req.json())))
     .post("/", async (c) => {
-      if (!c.env.ADMIN_TOKEN) return fail(c, 503, "committing is disabled: no ADMIN_TOKEN is configured");
-      if (!isOwner(c.req.header("Authorization"), c.env.ADMIN_TOKEN)) return fail(c, 401, "owner token required to commit");
-
       const { ruleset, hash } = await prepare(deps, c.env, await c.req.json());
       if (await repo.rulesetJsonByHash(c.env.DB, hash)) return fail(c, 409, "this exact ruleset was already submitted");
 

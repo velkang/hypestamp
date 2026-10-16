@@ -91,6 +91,7 @@ describe("reconcileStamps", () => {
   it("fails trades still unmatched after 30 minutes, freeing the token", async () => {
     const result = await reconcileStamps({ db, ledger: source([]), now: NOW + 30 * 60_000, startBlock: 400n });
     expect(result.failed).toEqual([tradeId]);
+    expect((await repo.getTrade(db, tradeId))!.failureReason).toBe("stamp-timeout");
     expect(await repo.openTradeTokens(db)).toEqual([]);
   });
 

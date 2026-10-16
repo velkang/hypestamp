@@ -1,15 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { Hash, Panel } from "../../components/ui";
-import { postJson } from "../../lib/api";
 import { useDebounced } from "../../lib/hooks";
 import type { Ruleset, RulesetPreview } from "../../lib/types";
+import { adminPost, useAdminSession } from "../admin/session";
 import { diffRulesets, type Draft } from "./diff";
 
 export function usePreview(draft: Draft) {
   const debounced = useDebounced(draft, 400);
+  const { token } = useAdminSession();
   return useQuery({
     queryKey: ["preview", JSON.stringify(debounced)],
-    queryFn: () => postJson<RulesetPreview>("/v1/rulesets/preview", debounced),
+    queryFn: () => adminPost<RulesetPreview>(token, "/rulesets/preview", debounced),
     retry: false,
   });
 }

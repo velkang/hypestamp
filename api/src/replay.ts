@@ -22,7 +22,7 @@ export async function replayTrade(db: D1Database, tradeId: number): Promise<Repl
 
   const checks: ReplayCheck[] = [
     checkRuleset(ruleset, trade.rulesetHash),
-    ...(await checkDecision(db, ruleset, trade.rulesetHash, request)),
+    ...(await checkDecision(db, ruleset, trade.rulesetHash, request, trade.openTokens)),
     await checkBundle(db, request, trade),
   ];
   const verdict = checks.some((c) => c.status === "fail")
@@ -46,6 +46,7 @@ async function checkDecision(
   ruleset: Ruleset,
   hash: string,
   request: StampRequest,
+  openTokens: string[] | null,
 ): Promise<ReplayCheck[]> {
   const asOf = request.observedAt * 1000;
   const windowStart = asOf - ruleset.converge.windowHours * HOUR_MS;
@@ -61,15 +62,23 @@ async function checkDecision(
   }
 
   const signalCheck: ReplayCheck = { name: "signal", status: "pass", detail: signal.explanation };
-  const decision = decideTrade(ruleset, signal, []);
+  const legacy = !request.riskContextHash;
+  if (!legacy && (openTokens === null || !Array.isArray(openTokens) || !openTokens.every((t) => typeof t === "string"))) {
+    return [signalCheck, { name: "request", status: "fail", detail: "The committed risk-context inputs are missing or invalid." }];
+  }
+  // Legacy requests can still reproduce their sizing, but never pass risk
+  // verification without the historical positions that drove the decision.
+  const decision = decideTrade(ruleset, signal, legacy ? [] : openTokens!);
   if (!decision.accepted) return [signalCheck, { name: "request", status: "fail", detail: decision.reason }];
 
   const tweets = await repo.tweetsByIds(db, signal.kols.map((k) => k.tweetId));
-  const rebuilt = buildStampRequest(ruleset, hash, signal, decision.trade, extractions, tweets, asOf);
+  const rebuilt = buildStampRequest(ruleset, hash, signal, decision.trade, extractions, tweets, asOf, legacy ? undefined : openTokens!);
   return [
     signalCheck,
     canonicalJson(rebuilt) === canonicalJson(request)
-      ? { name: "request", status: "pass", detail: "rebuilt stamp request is identical, including extractionsHash" }
+      ? legacy
+        ? { name: "request", status: "pending", detail: "Request rebuilds, but historical open-position inputs were not saved in this older trade; risk limits cannot be verified." }
+        : { name: "request", status: "pass", detail: "rebuilt stamp request is identical, including extraction and risk-context hashes" }
       : { name: "request", status: "fail", detail: "rebuilt stamp request differs from the one submitted" },
   ];
 }

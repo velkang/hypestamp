@@ -136,6 +136,7 @@ export type NewTrade = {
   requestJson: string
   signalJson: string
   submittedAt: number
+  openTokens?: string[]
 }
 
 export async function insertSubmittedTrade(
@@ -144,8 +145,8 @@ export async function insertSubmittedTrade(
 ): Promise<number> {
   const row = await db
     .prepare(
-      `INSERT INTO trades (ruleset_hash, token, side, request_json, signal_json, status, submitted_at)
-       VALUES (?, ?, ?, ?, ?, 'submitted', ?) RETURNING id`,
+      `INSERT INTO trades (ruleset_hash, token, side, request_json, signal_json, status, submitted_at, open_tokens_json)
+       VALUES (?, ?, ?, ?, ?, 'submitted', ?, ?) RETURNING id`,
     )
     .bind(
       trade.rulesetHash,
@@ -154,6 +155,7 @@ export async function insertSubmittedTrade(
       trade.requestJson,
       trade.signalJson,
       trade.submittedAt,
+      trade.openTokens === undefined ? null : JSON.stringify(trade.openTokens),
     )
     .first<{ id: number }>()
   if (!row) throw new Error('Failed to record submitted trade')
@@ -165,7 +167,7 @@ export async function insertSubmittedTrade(
 export async function openTradeTokens(db: D1Database): Promise<string[]> {
   const { results } = await db
     .prepare(
-      "SELECT token FROM trades WHERE status IN ('submitted', 'stamped') AND closed_at IS NULL ORDER BY id",
+      "SELECT token FROM trades WHERE status IN ('submitted', 'stamped') AND closed_at IS NULL AND is_demo = 0 ORDER BY id",
     )
     .all<{ token: string }>()
   return results.map((row) => row.token)
@@ -225,10 +227,10 @@ export async function markStamped(
     .run()
 }
 
-export async function markFailed(db: D1Database, id: number) {
+export async function markFailed(db: D1Database, id: number, reason: "submission-failed" | "stamp-timeout" = "submission-failed") {
   await db
-    .prepare("UPDATE trades SET status = 'failed' WHERE id = ?")
-    .bind(id)
+    .prepare("UPDATE trades SET status = 'failed', failure_reason = ? WHERE id = ?")
+    .bind(reason, id)
     .run()
 }
 
@@ -267,6 +269,12 @@ export type TradeRow = {
   submittedAt: number;
   stampedAt: number | null;
   isDemo: boolean;
+  openTokens: string[] | null;
+  failureReason: "submission-failed" | "stamp-timeout" | null;
+  closedAt: number | null;
+  exitPriceE8: string | null;
+  exitPriceAt: number | null;
+  exitReason: "stop-loss" | "take-profit" | null;
 };
 
 type TradeDbRow = {
@@ -283,6 +291,12 @@ type TradeDbRow = {
   submitted_at: number;
   stamped_at: number | null;
   is_demo: number;
+  open_tokens_json: string | null;
+  failure_reason: TradeRow["failureReason"];
+  closed_at: number | null;
+  exit_price_e8: string | null;
+  exit_price_at: number | null;
+  exit_reason: TradeRow["exitReason"];
 };
 
 const toTrade = (row: TradeDbRow): TradeRow => ({
@@ -299,6 +313,12 @@ const toTrade = (row: TradeDbRow): TradeRow => ({
   submittedAt: row.submitted_at,
   stampedAt: row.stamped_at,
   isDemo: row.is_demo === 1,
+  openTokens: row.open_tokens_json === null ? null : JSON.parse(row.open_tokens_json),
+  failureReason: row.failure_reason,
+  closedAt: row.closed_at,
+  exitPriceE8: row.exit_price_e8,
+  exitPriceAt: row.exit_price_at,
+  exitReason: row.exit_reason,
 });
 
 export async function getTrade(db: D1Database, id: number): Promise<TradeRow | null> {
@@ -384,4 +404,25 @@ export async function feedPosts(db: D1Database, promptHash: string, fromMs: numb
     postedAt: row.posted_at,
     extraction: row.json ? (JSON.parse(row.json) as Extraction) : null,
   }));
+}
+
+// A conditional update makes repeated exit checks idempotent.
+export async function closeTrade(db: D1Database, id: number, exit: {
+  priceE8: string; priceAt: number; closedAt: number; reason: "stop-loss" | "take-profit";
+}): Promise<boolean> {
+  const result = await db.prepare(
+    "UPDATE trades SET closed_at = ?, exit_price_e8 = ?, exit_price_at = ?, exit_reason = ? WHERE id = ? AND status = 'stamped' AND closed_at IS NULL AND is_demo = 0",
+  ).bind(exit.closedAt, exit.priceE8, exit.priceAt, exit.reason, id).run();
+  return result.meta.changes === 1;
+}
+
+// Closing frees the slot, but the same set of posts must not reopen it each tick.
+export async function previouslyTradedSignal(db: D1Database, token: string, side: Side, tweetIds: string[]): Promise<boolean> {
+  const { results } = await db.prepare(
+    "SELECT request_json FROM trades WHERE token = ? AND side = ? AND status = 'stamped' AND closed_at IS NOT NULL AND is_demo = 0",
+  ).bind(token, side).all<{ request_json: string }>();
+  return results.some((row) => {
+    const previous = new Set((JSON.parse(row.request_json) as { tweetIds: string[] }).tweetIds);
+    return tweetIds.every((id) => previous.has(id));
+  });
 }

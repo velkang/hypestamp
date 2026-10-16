@@ -61,6 +61,49 @@ describe("replayTrade", () => {
     expect((await replayTrade(db, tradeId))!.verdict).toBe("match");
   });
 
+  it("replays the saved positions even after those positions close", async () => {
+    const original = (await repo.getTrade(db, tradeId))!;
+    await db.prepare("DELETE FROM trades").run();
+    const earlier = await repo.insertSubmittedTrade(db, {
+      rulesetHash: RULESET_HASH, token: "BTC", side: "long", requestJson: original.requestJson,
+      signalJson: original.signalJson, submittedAt: NOW - 1000,
+    });
+    await runAgentCycle({ db, now: NOW, fetch: fakeTwitter(), twitterApiKey: "k", model: fakeModel(), submitStamp: vi.fn().mockResolvedValue(undefined) });
+    const current = (await repo.listTrades(db)).find((t) => t.token === "LINK")!;
+    expect(current.openTokens).toEqual(["BTC"]);
+    await repo.markStamped(db, earlier, { bundleHash: "0xearlier", entryPriceE8: "100", txHash: "0xt", stampedAt: NOW });
+    await repo.closeTrade(db, earlier, { priceE8: "120", priceAt: NOW + 1000, closedAt: NOW + 1000, reason: "take-profit" });
+    expect((await checks(current.id)).request).toBe("pass");
+  });
+
+  it("detects edits to risk inputs even when they would still allow the trade", async () => {
+    await db.prepare("UPDATE trades SET open_tokens_json = '[\"BTC\"]' WHERE id = ?").bind(tradeId).run();
+    expect((await checks(tradeId)).request).toBe("fail");
+  });
+
+  it("rejects a decision whose saved positions already exhaust the risk limit", async () => {
+    await db.prepare("UPDATE trades SET open_tokens_json = ? WHERE id = ?").bind(JSON.stringify(Array(ruleset.risk.maxOpen).fill("BTC")), tradeId).run();
+    const result = (await replayTrade(db, tradeId))!;
+    expect(result.checks.find((c) => c.name === "request")).toMatchObject({ status: "fail", detail: expect.stringContaining("max open positions") });
+  });
+
+  it("does not silently assume no positions when the committed snapshot is missing", async () => {
+    await db.prepare("UPDATE trades SET open_tokens_json = NULL WHERE id = ?").bind(tradeId).run();
+    expect((await checks(tradeId)).request).toBe("fail");
+  });
+
+  it("marks older trades without committed risk inputs incomplete", async () => {
+    await db.prepare("UPDATE trades SET open_tokens_json = NULL, request_json = json_remove(request_json, '$.riskContextHash') WHERE id = ?").bind(tradeId).run();
+    expect((await checks(tradeId)).request).toBe("pending");
+    expect((await replayTrade(db, tradeId))!.verdict).toBe("pending");
+  });
+
+  it("keeps the entry replay valid after its paper exit", async () => {
+    await stampCorrectly();
+    await repo.closeTrade(db, tradeId, { priceE8: "2845776000", priceAt: NOW + 300000, closedAt: NOW + 300000, reason: "take-profit" });
+    expect((await replayTrade(db, tradeId))!.verdict).toBe("match");
+  });
+
   it("fails the bundle check when the recorded bundleHash does not recompute", async () => {
     await repo.markStamped(db, tradeId, { bundleHash: "0xbad", entryPriceE8: "1", txHash: "0xt", stampedAt: NOW });
     expect((await checks(tradeId)).bundle).toBe("fail");

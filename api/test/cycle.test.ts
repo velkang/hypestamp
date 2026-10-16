@@ -89,6 +89,27 @@ describe("runAgentCycle", () => {
     expect(submitStamp).toHaveBeenCalledTimes(1);
   });
 
+  it("does not reopen a closed position from the same posts, but accepts a new call", async () => {
+    await repo.saveRuleset(db, ruleset, RULESET_HASH, NOW - 4_000_000);
+    await runAgentCycle(deps);
+    const [trade] = await repo.submittedTrades(db);
+    await repo.markStamped(db, trade.id, { bundleHash: "0xclosed", entryPriceE8: "100", txHash: "0xt", stampedAt: NOW });
+    await repo.closeTrade(db, trade.id, { priceE8: "120", priceAt: NOW + 1000, closedAt: NOW + 1000, reason: "take-profit" });
+    expect(await repo.openTradeTokens(db)).toEqual([]);
+    expect(await runAgentCycle({ ...deps, now: NOW + 300_000 })).toMatchObject({ submitted: [] });
+    const twitter = fakeTwitter();
+    const fetch = (async (input: RequestInfo | URL) => {
+      const response = await twitter(input);
+      const body = await response.json() as { data: { tweets: { id: string; createdAt: string }[] } };
+      if (String(input).includes("cobie")) {
+        body.data.tweets[0].id = "102";
+        body.data.tweets[0].createdAt = new Date(NOW + 500_000).toUTCString();
+      }
+      return new Response(JSON.stringify(body));
+    }) as typeof globalThis.fetch;
+    expect(await runAgentCycle({ ...deps, fetch, now: NOW + 600_000 })).toMatchObject({ submitted: ["LINK"] });
+  });
+
   it("marks the trade failed when submission to CRE fails, so it can be retried", async () => {
     await repo.saveRuleset(db, ruleset, RULESET_HASH, NOW - 4_000_000);
     submitStamp.mockRejectedValueOnce(new Error("bridge down"));
@@ -97,6 +118,7 @@ describe("runAgentCycle", () => {
 
     expect(result).toMatchObject({ status: "ok", submitted: [], errors: ["LINK: bridge down"] });
     expect(await repo.openTradeTokens(db)).toEqual([]);
+    expect((await repo.listTrades(db))[0].failureReason).toBe("submission-failed");
   });
 
   it("keeps going when one source's timeline fails", async () => {

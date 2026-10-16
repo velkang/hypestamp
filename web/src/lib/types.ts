@@ -27,8 +27,6 @@ export type Feed = { window: { from: number; to: number } | null; posts: FeedPos
 
 export type Status = {
   activeRuleset: { hash: string; effectiveFrom: number; model: string; sources: number; windowHours: number } | null;
-  lastSyncedBlock: string | null;
-  lastFetchAt: number | null;
   demo: boolean;
   trades: { submitted: number; stamped: number; failed: number };
 };
@@ -40,6 +38,7 @@ export type StampRequest = {
   signal: { token: string; coingeckoId: string; side: Side };
   tweetIds: string[];
   extractionsHash: string;
+  riskContextHash?: string;
   trade: { sizePct: number; stopLossPct: number; takeProfitPct: number };
   flags: number;
   observedAt: number;
@@ -57,6 +56,13 @@ export type Trade = {
   submittedAt: number;
   stampedAt: number | null;
   isDemo: boolean;
+  openTokens: string[] | null;
+  failureReason: "submission-failed" | "stamp-timeout" | null;
+  closedAt: number | null;
+  exitPriceE8: string | null;
+  exitPriceAt: number | null;
+  exitReason: "stop-loss" | "take-profit" | null;
+  pnl: { returnPct: number; bookContributionPct: number } | null;
   request: StampRequest;
   flags: string[];
   explanation: string;
@@ -75,8 +81,15 @@ export type RulesetSummary = {
   model: string;
   sources: number;
   committedAt: number;
-  status: RulesetStatus;
   commitTx: string | null;
+};
+
+export type AdminRuleset = RulesetSummary & { status: RulesetStatus };
+
+export type AdminOverview = {
+  agent: { lastFetchAt: number | null; lastSyncedBlock: string | null; bridgeUp: boolean };
+  trades: { submitted: number; stamped: number; failed: number };
+  rulesets: AdminRuleset[];
 };
 
 export type RulesetPreview = { ruleset: Ruleset; hash: string; cooldown: number };

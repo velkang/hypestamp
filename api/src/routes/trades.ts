@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { realizedPnl } from "../agent/exits";
 import { describeFlags } from "../agent/flags";
 import * as repo from "../db";
 import { replayTrade } from "../replay";
@@ -10,7 +11,7 @@ function summarize(trade: repo.TradeRow) {
   const { requestJson, signalJson, ...rest } = trade;
   const signal = JSON.parse(signalJson) as { explanation: string; kols: unknown[] };
   const request = JSON.parse(requestJson) as { flags: number; tweetIds: string[] };
-  return { ...rest, request, flags: describeFlags(request.flags), explanation: signal.explanation, kols: signal.kols };
+  return { ...rest, pnl: realizedPnl(trade), request, flags: describeFlags(request.flags), explanation: signal.explanation, kols: signal.kols };
 }
 
 export const trades = new Hono<AppEnv>()

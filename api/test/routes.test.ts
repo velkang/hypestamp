@@ -34,7 +34,7 @@ describe("API routes", () => {
     const { status, body } = await get("/v1/rulesets");
     expect(status).toBe(200);
     expect(body.data).toEqual([
-      { hash: RULESET_HASH, effectiveFrom: ruleset.effectiveFrom, model: "gpt-6-luna", sources: 3, committedAt: NOW - 4_000_000, status: "confirmed", commitTx: null },
+      { hash: RULESET_HASH, effectiveFrom: ruleset.effectiveFrom, model: "gpt-6-luna", sources: 3, committedAt: NOW - 4_000_000, commitTx: null },
     ]);
   });
 
