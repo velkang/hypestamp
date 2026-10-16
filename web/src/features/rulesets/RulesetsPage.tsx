@@ -1,104 +1,30 @@
 import { Link, useLocation } from "react-router";
-import { Badge, Empty, Failure, Hash, Loading, PageHeader, Panel, PanelHeader } from "../../components/ui";
+import { Empty, Failure, Loading, PageHeader } from "../../components/ui";
 import { useRuleset, useRulesets } from "../../lib/api";
-import { canonicalJson } from "../../lib/canonical";
-import { shortHash, utcClockSeconds, utcDate } from "../../lib/format";
-import type { RulesetDetail, RulesetSummary } from "../../lib/types";
-
-function Timeline({ rulesets, selected }: { rulesets: RulesetSummary[]; selected: string }) {
-  const now = Date.now();
-  const inForce = rulesets.findIndex((x) => x.effectiveFrom * 1000 <= now);
-  return (
-    <ol className="m-0 flex list-none flex-col gap-3 p-0">
-      {rulesets.map((r, i) => {
-        const effective = r.effectiveFrom * 1000;
-        const state = effective > now ? "In cooldown" : i === inForce ? "In force" : "Superseded";
-        const tone = state === "In force" ? "ok" : state === "In cooldown" ? "flag" : "quiet";
-        return (
-          <li key={r.hash}>
-            <Link to={`/rulesets#${r.hash}`} aria-current={r.hash === selected ? "true" : undefined}
-              className={`block rounded-[12px] border px-4 py-3.5 text-ink hover:no-underline ${r.hash === selected ? "border-action bg-raised" : "border-line bg-panel hover:border-line-strong"}`}>
-              <span className="flex items-center gap-2"><Badge tone={tone}>{state}</Badge><span className="font-mono text-[12.5px]">{shortHash(r.hash)}</span></span>
-              <span className="mt-2 block text-[13.5px]">Committed {utcClockSeconds(r.committedAt)} → effective {utcClockSeconds(effective)} UTC</span>
-              <span className="block text-[13px] text-ink-muted">{utcDate(effective)} · {r.sources} sources · {r.model}</span>
-            </Link>
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
-function Rule({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <h3 className="m-0 mb-1.5 text-[13px] font-medium text-ink-muted">{title}</h3>
-      <div className="text-[14px]">{children}</div>
-    </div>
-  );
-}
+import { utcClock, utcDate } from "../../lib/format";
+import type { RulesetDetail } from "../../lib/types";
 
 function Detail({ detail }: { detail: RulesetDetail }) {
-  const { ruleset: r } = detail;
-  return (
-    <Panel label="Selected ruleset">
-      <PanelHeader title={<span className="font-mono text-[15px]">{shortHash(detail.hash)}</span>}>
-        {detail.verified ? <Badge tone="proof" icon="check">JSON hashes to its on-chain ID</Badge> : <Badge tone="bad" icon="cross">Hash mismatch</Badge>}
-      </PanelHeader>
-      <div className="grid gap-6 border-t border-line px-6 py-5 md:grid-cols-2">
-        <Rule title="Signal rule">
-          At least <b>{r.converge.minKols} sources</b> agree on a token and direction within <b>{r.converge.windowHours} h</b>, each with conviction ≥ <b>{r.converge.minConviction}</b>, and their trust adds up to ≥ <b>{r.converge.minTrustSum}</b>. If both directions qualify, no trade.
-        </Rule>
-        <Rule title="Risk limits">
-          Up to <b>{r.risk.maxPositionPct}%</b> of the book per trade, scaled by conviction · stop <b>{r.risk.stopLossPct}%</b> · target <b>{r.risk.takeProfitPct}%</b> · at most <b>{r.risk.maxOpen}</b> open.
-        </Rule>
-        <Rule title="Extraction">
-          {r.extraction.model}, prompt pinned as <Hash value={r.extraction.promptHash} />. The agent refuses to run any other prompt under this ruleset.
-        </Rule>
-        <Rule title="Evidence flags">
-          Burst: {r.flags.burstMinKols} sources within {r.flags.burstMinutes} min · paid markers: {r.flags.promoKeywords.join(", ") || "none"}.
-        </Rule>
-        <Rule title="Sources and trust">
-          <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
-            {r.sources.map((s) => (
-              <li key={s.handle} className="flex justify-between gap-4"><span>@{s.handle}</span><span className="font-mono text-[12.5px]">{s.trustWeight}</span></li>
-            ))}
-          </ul>
-        </Rule>
-        <Rule title="Commitment">
-          Effective {utcDate(r.effectiveFrom * 1000)}, {utcClockSeconds(r.effectiveFrom * 1000)} UTC. The ledger refuses any trade stamped under it before then.
-        </Rule>
-      </div>
-      <div className="border-t border-line px-6 py-5">
-        <h3 className="m-0 mb-2 text-[13px] font-medium text-ink-muted">Committed JSON</h3>
-        <pre className="m-0 max-h-[320px] overflow-auto rounded-lg bg-page p-4 font-mono text-[12.5px] leading-relaxed text-ink-muted">{JSON.stringify(JSON.parse(canonicalJson(r)), null, 2)}</pre>
-      </div>
-    </Panel>
-  );
+  const r = detail.ruleset;
+  return <section><h2 className="section-title">Trading conditions</h2><dl className="definition-list">
+    <div><dt>Agreement</dt><dd>At least {r.converge.minKols} sources agree on a token and direction within {r.converge.windowHours} hours. If both directions qualify, the agent does not trade.</dd></div>
+    <div><dt>Conviction</dt><dd>Each source must have conviction of at least {r.converge.minConviction}. Their combined trust weight must reach {r.converge.minTrustSum}.</dd></div>
+    <div><dt>Position limits</dt><dd>Up to {r.risk.maxPositionPct}% of the book per trade, scaled by conviction. At most {r.risk.maxOpen} open positions.</dd></div>
+    <div><dt>Exits</dt><dd>{r.risk.stopLossPct}% stop loss and {r.risk.takeProfitPct}% take profit. Paper exits are observed and recorded off-chain.</dd></div>
+    <div><dt>Accounts followed</dt><dd>{r.sources.map(s => `@${s.handle}`).join(", ")}</dd></div>
+    <div><dt>Effective from</dt><dd>{utcDate(r.effectiveFrom * 1000)}, {utcClock(r.effectiveFrom * 1000)} UTC</dd></div>
+  </dl><details className="technical-details"><summary>Commitment, analysis settings, and JSON</summary><p>{detail.verified ? "The rules JSON matches its recorded hash." : "The rules JSON does not match its recorded hash."}</p><p className="font-mono break-all">{detail.hash}</p><p>Analysis model: {r.extraction.model}. Source weights, promotion markers, and the pinned analysis prompt are included below.</p><pre>{JSON.stringify(r,null,2)}</pre></details></section>;
 }
-
 export function RulesetsPage() {
   const rulesets = useRulesets();
   const hash = useLocation().hash.slice(1);
-  const selected = rulesets.data?.some((r) => r.hash === hash) ? hash : rulesets.data?.[0]?.hash;
+  const selected = rulesets.data?.some(r => r.hash === hash) ? hash : rulesets.data?.find(r => r.effectiveFrom * 1000 <= Date.now())?.hash ?? rulesets.data?.[0]?.hash;
   const detail = useRuleset(selected);
-
-  return (
-    <>
-      <PageHeader title="Pre-committed rules">
-        Like a Rule 10b5-1 trading plan, every ruleset is published on-chain before it takes effect and must wait out a cooldown. The ledger refuses any trade not made under the ruleset in force.
-      </PageHeader>
-      {rulesets.isPending && <Panel><Loading label="rulesets" /></Panel>}
-      {rulesets.isError && <Panel><Failure what="rulesets" error={rulesets.error} /></Panel>}
-      {rulesets.data?.length === 0 && <Panel><Empty title="No rulesets yet">Commit a ruleset to start the agent; it takes effect after the cooldown.</Empty></Panel>}
-      {rulesets.data && selected && (
-        <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
-          <Timeline rulesets={rulesets.data} selected={selected} />
-          {detail.isPending ? <Panel><Loading label="ruleset" /></Panel>
-            : detail.isError ? <Panel><Failure what="this ruleset" error={detail.error} /></Panel>
-            : <Detail detail={detail.data} />}
-        </div>
-      )}
-    </>
-  );
+  return <><PageHeader title="Trading rules">Published before they take effect, so each trade can be checked against the conditions set in advance.</PageHeader>
+    <p className="max-w-[75ch] text-ink-muted">The Sepolia ledger records each ruleset before a cooldown. Entry evidence must refer to the rules in force. These are practice trades with no real funds.</p>
+    {rulesets.isPending ? <Loading label="trading rules" /> : rulesets.isError ? <Failure what="trading rules" error={rulesets.error} /> : !selected ? <Empty title="No published rules yet">Trading conditions will appear here once recorded on-chain.</Empty> : <>
+      {detail.isPending ? <Loading label="selected rules" /> : detail.isError ? <Failure what="the selected rules" error={detail.error} /> : <Detail detail={detail.data} />}
+      <details className="technical-details"><summary>Published rule history</summary><ul className="m-0 list-none p-0">{rulesets.data?.map((r,i) => <li key={r.hash} className="py-3"><Link to={`/rulesets#${r.hash}`} aria-current={selected === r.hash ? "true" : undefined}>Rules published {utcDate(r.committedAt)}, {utcClock(r.committedAt)} UTC</Link><span className="ml-3 text-ink-muted">{r.effectiveFrom * 1000 > Date.now() ? "In cooldown" : r.hash === rulesets.data?.find(x => x.effectiveFrom * 1000 <= Date.now())?.hash ? "In force" : `Earlier rules ${rulesets.data!.length - i}`}</span></li>)}</ul></details>
+    </>}
+  </>;
 }

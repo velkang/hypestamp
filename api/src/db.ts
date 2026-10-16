@@ -277,7 +277,7 @@ export type TradeRow = {
   exitReason: "stop-loss" | "take-profit" | null;
 };
 
-type TradeDbRow = {
+export type TradeDbRow = {
   id: number;
   ruleset_hash: string;
   token: string;
@@ -299,7 +299,7 @@ type TradeDbRow = {
   exit_reason: TradeRow["exitReason"];
 };
 
-const toTrade = (row: TradeDbRow): TradeRow => ({
+export const toTrade = (row: TradeDbRow): TradeRow => ({
   id: row.id,
   rulesetHash: row.ruleset_hash,
   token: row.token,

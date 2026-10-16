@@ -136,3 +136,13 @@ describe("draftFrom", () => {
     expect(draftFrom(undefined)).toBe(DEFAULT_DRAFT);
   });
 });
+
+it("saves a custom report using the owner session and links to its snapshot",async()=>{
+  signIn();
+  const {fetch} = renderAt("/admin/reports");
+  await userEvent.click(await screen.findByRole("button",{name:"Generate report"}));
+  expect(await screen.findByRole("link",{name:"Read the saved report →"})).toHaveAttribute("href","/reports/daily-2026-10-15");
+  const call = fetch.mock.calls.find(([url,init])=>url === "/v1/admin/reports" && init?.method === "POST");
+  expect(new Headers(call?.[1]?.headers).get("Authorization")).toBe("Bearer secret");
+  expect(JSON.parse(String(call?.[1]?.body))).toEqual({startDate:"2026-10-15",endDate:"2026-10-15"});
+});

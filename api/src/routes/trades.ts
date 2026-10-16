@@ -15,7 +15,9 @@ function summarize(trade: repo.TradeRow) {
 }
 
 export const trades = new Hono<AppEnv>()
-  .get("/", async (c) => ok(c, (await repo.listTrades(c.env.DB)).map(summarize)))
+  .get("/", async (c) => ok(c, await Promise.all((await repo.listTrades(c.env.DB)).map(async (trade) => ({
+    ...summarize(trade), replayVerdict: (await replayTrade(c.env.DB, trade.id))!.verdict,
+  })))))
   .get("/:id", async (c) => {
     const id = c.req.param("id");
     if (!ID.test(id)) return fail(c, 400, "id must be a positive integer");

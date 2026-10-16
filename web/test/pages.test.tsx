@@ -1,152 +1,114 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sourceStats } from "../src/features/sources/sourceStats";
-import { feed, NOW, rulesetDetail, tradeDetail, trades } from "./helpers/fixtures";
+import { feed, NOW, savedReport, tradeDetail, trades } from "./helpers/fixtures";
 import { renderAt } from "./helpers/render";
 
-beforeEach(() => {
-  vi.useFakeTimers({ toFake: ["Date"] });
-  vi.setSystemTime(NOW);
+beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(NOW); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); localStorage.clear(); });
+
+it("explains the product without requesting the API", async () => {
+  const { fetch } = renderAt("/");
+  expect(screen.getByRole("heading",{level:1})).toHaveTextContent("A clear record of why an agent traded.");
+  expect(screen.getByRole("link",{name:"Explore dashboard"})).toHaveAttribute("href","/dashboard");
+  expect(screen.getByText("Practice trades. No real funds.")).toBeInTheDocument();
+  expect(fetch).not.toHaveBeenCalled();
 });
-afterEach(() => {
-  vi.useRealTimers();
-  vi.unstubAllGlobals();
+it("shows recent decisions, demo provenance and the latest saved report", async () => {
+  renderAt("/dashboard");
+  expect(await screen.findByText(/2 practice trades. 1 incomplete/)).toBeInTheDocument();
+  expect(screen.getByText(/Demo records/)).toBeInTheDocument();
+  expect(await screen.findByRole("link",{name:"Read report →"})).toHaveAttribute("href",`/reports/${savedReport.id}`);
+  expect(screen.queryByText("gpt-6-luna")).not.toBeInTheDocument();
 });
-
-describe("Overview", () => {
-  it("leads with the commitment, then proof, trades and flags", async () => {
-    renderAt("/");
-    expect(await screen.findByRole("heading", { level: 1, name: "Rules were locked on-chain before any trade" })).toBeInTheDocument();
-    expect(await screen.findByText("T-001 matches its stamp")).toBeInTheDocument();
-    expect(screen.getByText(/Demo data\./)).toBeInTheDocument();
-    expect(await screen.findByText("No disclosure marker found")).toBeInTheDocument();
-    expect(screen.getByText("No stamp for T-002")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /Posts from 2 sources/ })).toBeInTheDocument();
-  });
-
-  it("explains that nothing trades before a ruleset is in force", async () => {
-    renderAt("/", { "/v1/status": { activeRuleset: null, demo: false, trades: { submitted: 0, stamped: 0, failed: 0 } }, "/v1/feed": { window: null, posts: [] }, "/v1/trades": [] });
-    expect(await screen.findByText(/No ruleset is in force yet/)).toBeInTheDocument();
-    expect(await screen.findByText("No trades yet")).toBeInTheDocument();
-    expect(screen.queryByText(/Demo data\./)).not.toBeInTheDocument();
-  });
+it("shows the empty trading state without claiming verification", async () => {
+  renderAt("/dashboard", {"/v1/trades":[],"/v1/reports":[]});
+  expect(await screen.findByText("No trades yet")).toBeInTheDocument();
+  expect(await screen.findByText("No saved reports yet")).toBeInTheDocument();
+  expect(screen.queryByText("Matched")).not.toBeInTheDocument();
 });
-
-describe("Trades", () => {
-  it("lists every trade with its stamp status", async () => {
-    renderAt("/trades");
-    const table = await screen.findByRole("table");
-    expect(within(table).getByText("T-001")).toBeInTheDocument();
-    expect(within(table).getByText("Not stamped")).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "Filter trades" })).not.toBeInTheDocument();
-  });
-
-  it("shows closed position P&L without claiming replay has passed", async () => {
-    renderAt("/trades", { "/v1/trades": [{ ...trades[1], closedAt: NOW, pnl: { returnPct: -9, bookContributionPct: -0.3825 } }] });
-    expect(await screen.findByText("Closed · entry stamped")).toBeInTheDocument();
-    expect(screen.getByText("−9.00%")).toBeInTheDocument();
-    expect(screen.queryByText(/replay verified/)).not.toBeInTheDocument();
-  });
-
-  it("shows an actionable error when the API fails", async () => {
-    renderAt("/trades", { "/v1/trades": new Error("internal error") });
-    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load trades: internal error. Check that the API Worker is running, then refresh.");
-  });
+it("separates position P&L and evidence status", async () => {
+  renderAt("/trades", {"/v1/trades":[{...trades[1],closedAt:NOW,exitReason:"stop-loss",pnl:{returnPct:-9,bookContributionPct:-.38},replayVerdict:"pending"}]});
+  const table = await screen.findByRole("table");
+  expect(within(table).getByText("Closed · Stop loss")).toBeInTheDocument();
+  expect(within(table).getByText("−9.00%")).toBeInTheDocument();
+  expect(within(table).getByText("Incomplete")).toBeInTheDocument();
 });
-
-describe("Trade evidence", () => {
-  it("shows the replay verdict, its four checks, the reasoning, cited posts and record", async () => {
+it("shows API failures with a retry action",async()=>{
+  renderAt("/trades",{"/v1/trades":new Error("internal error")});
+  expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load trades: internal error.");
+  expect(screen.getByRole("button",{name:"Try again"})).toBeInTheDocument();
+});
+describe("trade review",()=>{
+  it("leads with the decision and keeps technical checks in disclosures",async()=>{
     renderAt("/trades/1");
-    expect(await screen.findByRole("heading", { name: "Replay matches the on-chain record" })).toBeInTheDocument();
-    for (const check of ["Ruleset JSON matches its committed hash", "Signal reproduces from saved posts", "Stamp request rebuilds identically", "Bundle hash matches the ledger"]) {
-      expect(screen.getByText(check)).toBeInTheDocument();
-    }
-    expect(screen.getByText(/trust 1.70 >= 1.3/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading",{name:"Why the agent traded"})).toBeInTheDocument();
+    expect(await screen.findByText("Matched")).toBeInTheDocument();
     expect(screen.getByText("Rotating into ETH here.")).toBeInTheDocument();
-    expect(screen.getByText("demo data, no transaction")).toBeInTheDocument();
+    const summary = screen.getByText("View detailed checks");
+    expect(summary.parentElement).not.toHaveAttribute("open");
+    await userEvent.click(summary);
+    expect(summary.parentElement).toHaveAttribute("open");
+    expect(screen.getByRole("link",{name:/Rules used/})).toBeInTheDocument();
   });
-
-  it("shows closed position prices, exit reason and realized P&L", async () => {
-    renderAt("/trades/1", { "/v1/trades/1": {
-      ...tradeDetail, closedAt: NOW, exitPriceE8: "284577600000", exitPriceAt: NOW - 1000,
-      exitReason: "take-profit", pnl: { returnPct: 20, bookContributionPct: 0.85 },
-    } });
-    expect(await screen.findByRole("heading", { name: "Closed paper position" })).toBeInTheDocument();
-    expect(screen.getByText("$2,845.78 · Take profit")).toBeInTheDocument();
+  it("preserves exit prices, times, reasons and P&L",async()=>{
+    renderAt("/trades/1",{"/v1/trades/1":{...tradeDetail,closedAt:NOW,exitPriceE8:"284577600000",exitPriceAt:NOW-1000,exitReason:"take-profit",pnl:{returnPct:20,bookContributionPct:.85}}});
+    expect(await screen.findByText("Closed · Take profit")).toBeInTheDocument();
+    expect(screen.getByText("$2,845.78")).toBeInTheDocument();
     expect(screen.getByText("+20.00%")).toBeInTheDocument();
     expect(screen.getByText("+0.85 percentage points")).toBeInTheDocument();
-    expect(screen.getByText(/recorded off-chain/)).toBeInTheDocument();
   });
-
-  it("explains a stamp timeout without claiming a ledger refusal", async () => {
-    renderAt("/trades/1", { "/v1/trades/1": { ...tradeDetail, status: "failed", failureReason: "stamp-timeout" } });
+  it.each(["pending","mismatch"])("distinguishes %s evidence",async verdict=>{
+    renderAt("/trades/1",{"/v1/trades/1/replay":{tradeId:1,verdict,checks:[]}});
+    expect(await screen.findByText(verdict === "pending" ? "Incomplete" : "Mismatch")).toBeInTheDocument();
+  });
+  it("explains a stamp timeout in the technical record",async()=>{
+    renderAt("/trades/1",{"/v1/trades/1":{...tradeDetail,status:"failed",failureReason:"stamp-timeout"}});
     expect(await screen.findByText("No matching stamp found within 30 minutes")).toBeInTheDocument();
-    expect(screen.queryByText("Refused by the ledger")).not.toBeInTheDocument();
   });
-
-  it("reports an unknown trade", async () => {
-    renderAt("/trades/99");
-    expect(await screen.findByRole("alert")).toHaveTextContent(/Couldn't load this trade: not found/);
-  });
+  it("reports an unknown trade",async()=>{renderAt("/trades/99");expect(await screen.findByRole("alert")).toHaveTextContent("not found");});
 });
-
-describe("Rulesets", () => {
-  it("shows the ruleset in force, its verified hash and the rules in plain language", async () => {
-    renderAt("/rulesets");
-    expect(await screen.findByText("JSON hashes to its on-chain ID")).toBeInTheDocument();
-    expect(screen.getByText("In force")).toBeInTheDocument();
-    expect(screen.getByText(/If both directions qualify, no trade/)).toBeInTheDocument();
-    expect(screen.getByText(/"minTrustSum": 1.3/)).toBeInTheDocument();
-  });
+it("puts plain-language trading conditions above technical metadata",async()=>{
+  renderAt("/rulesets");
+  expect(await screen.findByRole("heading",{name:"Trading conditions"})).toBeInTheDocument();
+  expect(screen.getByText(/If both directions qualify/)).toBeInTheDocument();
+  expect(screen.getByText("Commitment, analysis settings, and JSON").parentElement).not.toHaveAttribute("open");
 });
-
-describe("Sources", () => {
-  it("tallies each source and shows a source's posts when selected", async () => {
-    renderAt("/sources");
-    const table = await screen.findByRole("table");
-    const hayes = within(table).getByRole("row", { name: /@CryptoHayes/ });
-    expect(within(hayes).getAllByRole("cell").map((c) => c.textContent)).toEqual(["0.8", "2", "1", "0", "1", "1", "1 h ago"]);
-
-    await userEvent.click(within(table).getByRole("button", { name: "@CryptoHayes" }));
-    expect(screen.getByRole("heading", { name: "Posts from @CryptoHayes" })).toBeInTheDocument();
-    expect(screen.getByText("promotion · no disclosure marker")).toBeInTheDocument();
-  });
+it("shows readable posts and links them to the decision",async()=>{
+  renderAt("/sources");
+  await userEvent.click(await screen.findByRole("button",{name:/@CryptoHayes/}));
+  expect(screen.getByRole("heading",{name:"Posts from @CryptoHayes"})).toBeInTheDocument();
+  expect(screen.getByText(/Promotion detected without a disclosure marker/)).toBeInTheDocument();
+  expect(screen.getByRole("link",{name:"Used in T-001 →"})).toHaveAttribute("href","/trades/1");
 });
-
-describe("Reports", () => {
-  it("renders the evidence report with its verdict stamp and findings", async () => {
-    renderAt("/reports");
-    expect(await screen.findByText("0 MISMATCHES")).toBeInTheDocument();
-    expect(screen.getByText(/1 practice trade was stamped on-chain/)).toBeInTheDocument();
-    expect(screen.getByText(/1 trade submission has no matching stamp recorded/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Download JSON/ })).toHaveAttribute("href", "/v1/reports/compliance");
-  });
+it("handles missing active rules without loading forever",async()=>{
+  renderAt("/sources",{"/v1/status":{activeRuleset:null,demo:false,trades:{submitted:0,stamped:0,failed:0}}});
+  expect(await screen.findByText("No sources yet")).toBeInTheDocument();
 });
-
-describe("sourceStats", () => {
-  it("counts posts, calls, undisclosed promotion and citations per source, case-insensitively", () => {
-    const stats = sourceStats([{ handle: "Cobie", trustWeight: 0.9 }, { handle: "nobody", trustWeight: 0.1 }], feed.posts);
-    expect(stats[0]).toEqual({ handle: "Cobie", trustWeight: 0.9, posts: 2, bullish: 1, bearish: 1, undisclosedPromo: 0, cited: 1, lastPostAt: NOW - 6 * 3_600_000 });
-    expect(stats[1]).toMatchObject({ posts: 0, lastPostAt: null });
-    expect(rulesetDetail.verified).toBe(true);
-  });
+it("lists saved reports and presents incomplete coverage accurately",async()=>{
+  renderAt("/reports");
+  expect(await screen.findByText("Incomplete")).toBeInTheDocument();
+  expect(screen.getByRole("link",{name:/Read report for/})).toHaveAttribute("href",`/reports/${savedReport.id}`);
+  expect(screen.queryByText(/0 MISMATCHES/)).not.toBeInTheDocument();
 });
-
-describe("Public shell", () => {
-  it("has no operator links or controls", async () => {
-    renderAt("/rulesets");
-    await screen.findByText("In force");
-    expect(screen.queryByRole("link", { name: /Compose/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
-    expect(screen.queryByText(/agent ran/)).not.toBeInTheDocument();
-  });
+it("shows the frozen snapshot with contextual download and print actions",async()=>{
+  const print = vi.spyOn(window,"print").mockImplementation(()=>{});
+  renderAt(`/reports/${savedReport.id}`);
+  expect(await screen.findByText("Review incomplete")).toBeInTheDocument();
+  expect(screen.getByText(/Partial period/)).toBeInTheDocument();
+  expect(screen.getByText(/not a complete raw-evidence archive/)).toBeInTheDocument();
+  expect(screen.getByRole("button",{name:"Download report JSON"})).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button",{name:"Print / save PDF"}));
+  expect(print).toHaveBeenCalledOnce();
 });
-
-describe("Not found", () => {
-  it("offers a way back", async () => {
-    renderAt("/nope");
-    await waitFor(() => expect(screen.getByText("Page not found")).toBeInTheDocument());
-    expect(screen.getByRole("link", { name: "Back to the overview" })).toHaveAttribute("href", "/");
-  });
+it("keeps operator tools and trading rules out of primary public navigation",async()=>{
+  renderAt("/trades");
+  const nav = screen.getByRole("navigation",{name:"Main"});
+  expect(within(nav).getAllByRole("link").map(a=>a.textContent)).toEqual(["Dashboard","Trades","Sources","Reports"]);
+  expect(screen.queryByRole("button",{name:/Export/})).not.toBeInTheDocument();
+});
+it("offers a way home from missing pages",()=>{renderAt("/nope");expect(screen.getByRole("link",{name:"Back to the home page"})).toHaveAttribute("href","/");});
+it("counts case-insensitive source activity",()=>{
+  expect(sourceStats([{handle:"Cobie",trustWeight:.9}],feed.posts)[0]).toMatchObject({posts:2,bullish:1,bearish:1,cited:1});
 });

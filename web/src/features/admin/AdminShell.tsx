@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, NavLink, Outlet } from "react-router";
+import { Brand } from "../../components/Brand";
+import { ThemeToggle } from "../../lib/theme";
 import { ApiError } from "../../lib/api";
 import { AdminSessionProvider, useAdminOverview, useAdminSession } from "./session";
 
@@ -24,23 +26,23 @@ function Unlock({ error }: { error?: string }) {
 function Gate() {
   const { token, lock } = useAdminSession();
   const overview = useAdminOverview();
-  if (!token) return <Unlock />;
+  if (!token) return <><header className="site-header"><Brand /><ThemeToggle /></header><main className="site-main"><Unlock /></main></>;
   if (overview.isError && overview.error instanceof ApiError && overview.error.status === 401) {
-    return <Unlock error="That token was not accepted." />;
+    return <><header className="site-header"><Brand /><ThemeToggle /></header><main className="site-main"><Unlock error="That token was not accepted." /></main></>;
   }
   return (
     <>
       <header className="border-b border-line">
         <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3 md:px-10">
-          <span className="flex items-center gap-2 text-[17px] font-bold">Hypestamp <span className="rounded-[5px] bg-raised px-1.5 py-0.5 text-[11.5px] font-semibold text-ink-muted">operator</span></span>
+          <Brand /><span className="text-ink-muted">Operator</span>
           <nav aria-label="Admin" className="flex gap-0.5">
-            {[{ to: "/admin", label: "Console", end: true }, { to: "/admin/rulesets/new", label: "Compose ruleset" }].map((item) => (
+            {[{ to: "/admin", label: "Console", end: true }, { to: "/admin/rulesets/new", label: "Compose ruleset" }, { to: "/admin/reports", label: "Reports" }].map((item) => (
               <NavLink key={item.to} to={item.to} end={item.end}
                 className={({ isActive }) => `rounded-[7px] px-3 py-2 font-medium hover:no-underline ${isActive ? "bg-raised text-ink" : "text-ink-muted hover:text-ink"}`}>{item.label}</NavLink>
             ))}
           </nav>
           <div className="ml-auto flex items-center gap-4 text-[13.5px]">
-            <Link to="/">Public site</Link>
+            <Link to="/">Public site</Link><ThemeToggle />
             <button type="button" onClick={lock} className="rounded-[7px] border border-line-strong px-3 py-1.5 font-medium text-ink-muted hover:text-ink">Lock</button>
           </div>
         </div>
@@ -51,5 +53,5 @@ function Gate() {
 }
 
 export function AdminShell() {
-  return <AdminSessionProvider><Gate /></AdminSessionProvider>;
+  return <div className="operator-console"><AdminSessionProvider><Gate /></AdminSessionProvider></div>;
 }

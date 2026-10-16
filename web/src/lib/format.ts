@@ -39,3 +39,10 @@ export function relativeTime(ms: number, now: number = Date.now()): string {
   if (minutes < 60) return `${minutes} min ago`;
   return `${Math.floor(minutes / 60)} h ago`;
 }
+
+
+export function periodLabel(period: { startDate: string; endDate: string }): string {
+  const date = (s: string) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${s}T00:00:00Z`));
+  const dates = period.startDate === period.endDate ? date(period.startDate) : `${date(period.startDate)} – ${date(period.endDate)}`;
+  return `${dates} (UTC)`;
+}

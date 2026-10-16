@@ -4,7 +4,7 @@ import { CheckIcon, CopyIcon, CrossIcon } from "./icons";
 
 export function Panel({ children, className = "", label }: { children: ReactNode; className?: string; label?: string }) {
   return (
-    <section aria-label={label} className={`min-w-0 rounded-[14px] border border-line bg-panel ${className}`}>
+    <section aria-label={label} className={`panel ${className}`}>
       {children}
     </section>
   );
@@ -71,40 +71,20 @@ export function Hash({ value, full = false }: { value: string; full?: boolean })
 }
 
 export function Loading({ label }: { label: string }) {
-  return (
-    <div role="status" className="px-6 py-8 text-[13.5px] text-ink-muted">
-      <span className="mr-2 inline-block size-2 animate-pulse rounded-full bg-proof align-middle" />
-      Loading {label}…
-    </div>
-  );
+  return <div role="status" className="loading-state quiet-note">Loading {label}…</div>;
 }
 
 export function Failure({ what, error }: { what: string; error: unknown }) {
-  const reason = error instanceof Error ? error.message : "unknown error";
-  return (
-    <div role="alert" className="px-6 py-8 text-[13.5px] text-bear-ink">
-      Couldn't load {what}: {reason}. Check that the API Worker is running, then refresh.
-    </div>
-  );
+  const reason = error instanceof Error ? error.message : "Please try again.";
+  return <div role="alert" className="failure-state"><p className="m-0">Couldn't load {what}: {reason}.</p><button type="button" className="text-button" onClick={() => window.location.reload()}>Try again</button></div>;
 }
 
 export function Empty({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="px-6 py-10">
-      <p className="m-0 font-semibold">{title}</p>
-      <p className="mt-1 mb-0 max-w-[60ch] text-[13.5px] text-ink-muted">{children}</p>
-    </div>
-  );
+  return <div className="empty-state"><p className="font-semibold">{title}</p><p className="quiet-note">{children}</p></div>;
 }
 
 export function PageHeader({ title, children, back }: { title: ReactNode; children?: ReactNode; back?: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      {back}
-      <h1 className="m-0 text-[26px] font-bold tracking-[-0.02em]">{title}</h1>
-      {children && <p className="m-0 max-w-[75ch] text-ink-muted">{children}</p>}
-    </div>
-  );
+  return <div className="page-header">{back && <div className="back-link">{back}</div>}<h1>{title}</h1>{children && <p>{children}</p>}</div>;
 }
 
 type Tab<T extends string> = { value: T; label: string; count?: number };

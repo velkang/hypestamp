@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { ComplianceReport, Feed, Replay, RulesetDetail, RulesetSummary, Status, Trade } from "./types";
+import type { ComplianceReport, ReportSummary, SavedReport, Feed, Replay, RulesetDetail, RulesetSummary, Status, Trade } from "./types";
 
 type Envelope<T> = { success: true; data: T } | { success: false; error: string };
 
@@ -51,3 +51,6 @@ export const useRuleset = (hash: string | undefined) =>
   });
 export const useReport = () =>
   useQuery({ queryKey: ["report"], queryFn: () => getJson<ComplianceReport>("/v1/reports/compliance") });
+
+export const useReports = () => useQuery({ queryKey: ["reports"], queryFn: () => getJson<ReportSummary[]>("/v1/reports"), refetchInterval: MINUTE });
+export const useSavedReport = (id: string) => useQuery({ queryKey: ["reports", id], queryFn: () => getJson<SavedReport>(`/v1/reports/${encodeURIComponent(id)}`), staleTime: Infinity });

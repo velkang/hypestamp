@@ -1,4 +1,6 @@
 // Re-derives a trade from stored inputs to show it followed its pre-committed rules.
+import type { Extraction } from "./agent/types";
+import type { TweetFields } from "./stamp/encoding";
 import { buildStampRequest, HOUR_MS } from "./agent/cycle";
 import { converge } from "./agent/converge";
 import { decideTrade } from "./agent/risk";
@@ -19,18 +21,25 @@ export async function replayTrade(db: D1Database, tradeId: number): Promise<Repl
   if (!rulesetJson) throw new Error(`Ruleset ${trade.rulesetHash} for trade ${tradeId} is missing`);
   const ruleset = parseRuleset(JSON.parse(rulesetJson));
   const request = parseStampRequest(JSON.parse(trade.requestJson));
+  const asOf = request.observedAt * 1000;
+  const extractions = await repo.extractionsSince(db, ruleset.extraction.promptHash, asOf - ruleset.converge.windowHours * HOUR_MS, asOf);
+  const tweets = await repo.tweetsByIds(db, [...new Set([...request.tweetIds, ...extractions.map((e) => e.tweetId)])]);
+  return replayFromInputs(trade, rulesetJson, extractions, tweets);
+}
 
+// Both live replay and saved reports use this deterministic engine. Reports pass
+// captured rows, so generation never mixes a frozen trade with changing inputs.
+export function replayFromInputs(trade: repo.TradeRow, rulesetJson: string, extractions: Extraction[], tweets: TweetFields[]): ReplayResult {
+  const ruleset = parseRuleset(JSON.parse(rulesetJson));
+  const request = parseStampRequest(JSON.parse(trade.requestJson));
   const checks: ReplayCheck[] = [
     checkRuleset(ruleset, trade.rulesetHash),
-    ...(await checkDecision(db, ruleset, trade.rulesetHash, request, trade.openTokens)),
-    await checkBundle(db, request, trade),
+    ...checkDecision(ruleset, trade.rulesetHash, request, trade.openTokens, extractions, tweets),
+    checkBundle(request, trade, tweets),
   ];
-  const verdict = checks.some((c) => c.status === "fail")
-    ? "mismatch"
-    : checks.some((c) => c.status === "pending")
-      ? "pending"
-      : "match";
-  return { tradeId, verdict, checks };
+  const verdict = checks.some((c) => c.status === "fail") ? "mismatch"
+    : checks.some((c) => c.status === "pending") ? "pending" : "match";
+  return { tradeId: trade.id, verdict, checks };
 }
 
 function checkRuleset(ruleset: Ruleset, committedHash: string): ReplayCheck {
@@ -41,16 +50,15 @@ function checkRuleset(ruleset: Ruleset, committedHash: string): ReplayCheck {
 }
 
 // Converge and risk are re-run on exactly the extractions the agent had at observedAt.
-async function checkDecision(
-  db: D1Database,
+function checkDecision(
   ruleset: Ruleset,
   hash: string,
   request: StampRequest,
   openTokens: string[] | null,
-): Promise<ReplayCheck[]> {
+  extractions: Extraction[],
+  tweets: TweetFields[],
+): ReplayCheck[] {
   const asOf = request.observedAt * 1000;
-  const windowStart = asOf - ruleset.converge.windowHours * HOUR_MS;
-  const extractions = await repo.extractionsSince(db, ruleset.extraction.promptHash, windowStart, asOf);
   const signal = converge(ruleset, extractions, asOf).find(
     (s) => s.token === request.signal.token && s.side === request.signal.side,
   );
@@ -71,7 +79,6 @@ async function checkDecision(
   const decision = decideTrade(ruleset, signal, legacy ? [] : openTokens!);
   if (!decision.accepted) return [signalCheck, { name: "request", status: "fail", detail: decision.reason }];
 
-  const tweets = await repo.tweetsByIds(db, signal.kols.map((k) => k.tweetId));
   const rebuilt = buildStampRequest(ruleset, hash, signal, decision.trade, extractions, tweets, asOf, legacy ? undefined : openTokens!);
   return [
     signalCheck,
@@ -83,11 +90,11 @@ async function checkDecision(
   ];
 }
 
-async function checkBundle(db: D1Database, request: StampRequest, trade: repo.TradeRow): Promise<ReplayCheck> {
+function checkBundle(request: StampRequest, trade: repo.TradeRow, storedTweets: TweetFields[]): ReplayCheck {
   if (!trade.bundleHash || !trade.entryPriceE8) {
     return { name: "bundle", status: "pending", detail: "not stamped on-chain yet" };
   }
-  const tweets = new Map((await repo.tweetsByIds(db, request.tweetIds)).map((t) => [t.id, t]));
+  const tweets = new Map(storedTweets.map((t) => [t.id, t]));
   const hashes = request.tweetIds.map((id) => {
     const tweet = tweets.get(id);
     return { id, hash: tweet ? tweetHash(tweet) : ("0x" as const) };

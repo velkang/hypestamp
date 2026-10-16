@@ -1,54 +1,29 @@
-import { Link, useNavigate } from "react-router";
-import { ChevronIcon, TokenMark } from "../../components/icons";
-import { Badge } from "../../components/ui";
-import { signed, tradeCode, usdFromE8, utcClock } from "../../lib/format";
+import { Link } from "react-router";
+import { EvidenceStatus } from "../../components/EvidenceStatus";
+import { signed, usdFromE8, utcClock, utcDate } from "../../lib/format";
 import type { Trade } from "../../lib/types";
 
-function StatusBadge({ trade }: { trade: Trade }) {
-  if (trade.status === "stamped") return <Badge tone="ok" icon="check">{trade.closedAt !== null ? "Closed · entry stamped" : "Open · entry stamped"}</Badge>;
-  if (trade.status === "failed") return <Badge tone="bad" icon="cross">Not stamped</Badge>;
-  return <Badge tone="quiet">Awaiting stamp</Badge>;
+export function positionLabel(trade: Pick<Trade, "status" | "closedAt" | "exitReason">) {
+  if (trade.status === "failed") return "Not opened";
+  if (trade.status === "submitted") return "Awaiting stamp";
+  if (trade.closedAt === null) return "Open";
+  return `Closed · ${trade.exitReason === "take-profit" ? "Take profit" : "Stop loss"}`;
 }
 
-export function TradesTable({ trades }: { trades: Trade[] }) {
-  const navigate = useNavigate();
-  return (
-    <div className="relative overflow-x-auto">
-      <table className="w-full min-w-[720px] border-collapse">
-        <thead>
-          <tr className="text-left text-[12.5px] text-ink-faint">
-            {["ID", "Trade", "Agreed", "Size", "Entry", "Status", "P&L", "UTC"].map((h) => (
-              <th key={h} scope="col" className="border-y border-line px-4 py-2.5 font-medium first:pl-6">{h}</th>
-            ))}
-            <th scope="col" className="border-y border-line pr-6"><span className="sr-only">Open</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          {trades.map((t) => (
-            <tr key={t.id} onClick={() => navigate(`/trades/${t.id}`)}
-              className="cursor-pointer border-b border-line last:border-0 hover:bg-raised">
-              <td className="whitespace-nowrap py-3.5 pl-6 pr-4 font-mono text-[12.5px]">
-                <Link to={`/trades/${t.id}`} className="text-ink" onClick={(e) => e.stopPropagation()}>{tradeCode(t.id)}</Link>
-              </td>
-              <td className="whitespace-nowrap px-4">
-                <span className="flex items-center gap-2.5 font-semibold">
-                  <TokenMark token={t.token} />{t.token}
-                  <span className={t.side === "long" ? "text-bull" : "text-bear"}>{t.side === "long" ? "Long" : "Short"}</span>
-                </span>
-              </td>
-              <td className="whitespace-nowrap px-4">{t.kols.length} sources</td>
-              <td className="whitespace-nowrap px-4">{t.request.trade.sizePct}%</td>
-              <td className="whitespace-nowrap px-4">{usdFromE8(t.entryPriceE8)}</td>
-              <td className="whitespace-nowrap px-4"><StatusBadge trade={t} /></td>
-              <td className={`whitespace-nowrap px-4 ${t.pnl ? t.pnl.returnPct >= 0 ? "text-bull" : "text-bear" : "text-ink-muted"}`}>
-                {t.pnl ? `${signed(t.pnl.returnPct)}%` : "—"}
-              </td>
-              <td className="whitespace-nowrap px-4">{utcClock(t.submittedAt)}</td>
-              <td className="pr-6 text-ink-faint"><ChevronIcon /></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+export function TradesTable({ trades, compact = false }: { trades: Trade[]; compact?: boolean }) {
+  return <div className="table-wrap" role="region" aria-label="Practice trades" tabIndex={0}>
+    <table className={`data-table ${compact ? "" : "trade-table"}`}>
+      <caption className="sr-only">Practice trade decisions, position outcomes and evidence checks</caption>
+      <thead><tr>{["Trade", compact ? "Why it happened" : "Decision", ...(!compact ? ["Entry"] : []), "Position", ...(!compact ? ["Realized P&L"] : []), "Evidence", ""].map((h, i) => <th key={i} scope="col">{h || <span className="sr-only">Open trade</span>}</th>)}</tr></thead>
+      <tbody>{trades.map((trade) => <tr key={trade.id}>
+        <td><Link className="trade-name" to={`/trades/${trade.id}`}>{trade.token} {trade.side === "long" ? "Long" : "Short"}</Link><small>{utcDate(trade.submittedAt)}, {utcClock(trade.submittedAt)} UTC{trade.isDemo ? " · Demo" : ""}</small></td>
+        <td>{trade.kols.length} sources agreed{compact ? ` on ${trade.token}` : ""}{trade.flags.length > 0 && <small className="text-flag-ink">{trade.flags.length} evidence flag{trade.flags.length === 1 ? "" : "s"}</small>}</td>
+        {!compact && <td className="number">{usdFromE8(trade.entryPriceE8)}</td>}
+        <td>{positionLabel(trade)}</td>
+        {!compact && <td className={`number ${trade.pnl ? trade.pnl.returnPct >= 0 ? "text-bull" : "text-bear-ink" : "text-ink-muted"}`}>{trade.pnl ? `${signed(trade.pnl.returnPct)}%` : "—"}</td>}
+        <td><EvidenceStatus verdict={trade.replayVerdict} /></td>
+        <td><Link to={`/trades/${trade.id}`} aria-label={`Review ${trade.token} ${trade.side} trade ${trade.id}`}>→</Link></td>
+      </tr>)}</tbody>
+    </table>
+  </div>;
 }

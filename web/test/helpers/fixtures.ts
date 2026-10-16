@@ -104,3 +104,19 @@ export const API: Record<string, unknown> = {
   "POST /v1/admin/rulesets/preview": preview,
   "POST /v1/admin/rulesets": { hash: preview.hash, effectiveFrom: NOW / 1000 + 180, status: "pending" },
 };
+
+export const savedReport: import("../../src/lib/types").SavedReport = {
+  id: "daily-2026-10-15", schemaVersion: 1, source: "daily", generatedAt: new Date(NOW).toISOString(),
+  period: { startDate: "2026-10-15", endDate: "2026-10-15", from: Date.UTC(2026,9,15), to: Date.UTC(2026,9,16), timeZone: "UTC", partial: true },
+  coverage: { demo: 2, live: 0 },
+  summary: { total: 2, submitted: 0, stamped: 1, failed: 1, replay: { match: 1, mismatch: 0, pending: 1 }, flagged: {} },
+  trades: trades.map(t => ({ ...t, replay: t.id === 1 ? replay : { ...replay, tradeId: 2, verdict: "pending" } })),
+  rulesets: [{ hash: HASH, ruleset: rulesetDetail.ruleset, status: "confirmed", commitTx: null }],
+  promotion: report.promotion,
+  methodology: { promotionPromptHash: rulesetDetail.ruleset.extraction.promptHash, tradeScope: "Trades opened within the UTC dates.", outcomes: "Outcomes known at capture.", evidence: "Entry evidence and off-chain exits are separate." },
+};
+API["/v1/reports"] = [savedReport];
+API[`/v1/reports/${savedReport.id}`] = savedReport;
+API["POST /v1/admin/reports"] = savedReport;
+trades[0].replayVerdict = "pending";
+trades[1].replayVerdict = "match";

@@ -67,6 +67,7 @@ export type Trade = {
   flags: string[];
   explanation: string;
   kols: SignalKol[];
+  replayVerdict?: Replay["verdict"];
   posts?: { id: string; author: string; text: string; createdAt: string }[]; // only on /v1/trades/:id
 };
 
@@ -117,4 +118,19 @@ export type ComplianceReport = {
   replay: { match: number; mismatch: number; pending: number };
   flagged: Record<string, number>;
   promotion: PromotionStats[];
+};
+
+
+export type ReportPeriod = { startDate: string; endDate: string; from: number; to: number; timeZone: "UTC"; partial: boolean };
+export type ReportSummary = {
+  id: string; schemaVersion: 1; source: "daily" | "manual"; generatedAt: string; period: ReportPeriod;
+  coverage: { demo: number; live: number };
+  summary: { total: number; submitted: number; stamped: number; failed: number;
+    replay: { match: number; mismatch: number; pending: number }; flagged: Record<string, number> };
+};
+export type SavedReport = ReportSummary & {
+  trades: (Pick<Trade, "id" | "token" | "side" | "isDemo" | "submittedAt" | "status" | "rulesetHash" | "entryPriceE8" | "bundleHash" | "txHash" | "closedAt" | "exitPriceE8" | "exitPriceAt" | "exitReason" | "pnl" | "flags" | "explanation" | "kols"> & { replay: Replay })[];
+  rulesets: { hash: string; ruleset: Ruleset; status: string; commitTx: string | null }[];
+  promotion: PromotionStats[];
+  methodology: { promotionPromptHash: string | null; tradeScope: string; outcomes: string; evidence: string };
 };

@@ -1,6 +1,7 @@
 import { Hono, type MiddlewareHandler } from "hono";
 import * as repo from "../db";
 import { parseRuleset } from "../rulesets/schema";
+import { adminReports } from "./reports";
 import { composeRoutes, type ComposeDeps } from "./compose";
 import { fail, ok, type AppBindings, type AppEnv } from "./respond";
 
@@ -49,5 +50,6 @@ export function adminRoutes(deps: AdminDeps) {
         rulesets,
       });
     })
-    .route("/rulesets", composeRoutes(deps));
+    .route("/rulesets", composeRoutes(deps))
+    .route("/reports", adminReports);
 }
