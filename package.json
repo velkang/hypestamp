@@ -13,7 +13,10 @@
     "web:build": "pnpm --dir web build",
     "db:migrate:local": "wrangler d1 migrations apply hypestamp --local -c api/wrangler.jsonc",
     "contracts:test": "forge test --root contracts",
-    "cre:simulate": "cd cre && cre workflow simulate stamp-workflow --target staging-settings"
+    "cre:simulate": "cd cre && cre workflow simulate stamp-workflow --target staging-settings",
+    "db:migrate:remote": "wrangler d1 migrations apply hypestamp --remote -c api/wrangler.jsonc",
+    "deploy:api": "pnpm db:migrate:remote && wrangler deploy -c api/wrangler.jsonc",
+    "deploy:web": "pnpm web:build && wrangler deploy -c web/wrangler.jsonc"
   },
   "devDependencies": {
     "wrangler": "^4.151.0"
