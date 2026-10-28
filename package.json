@@ -8,6 +8,7 @@
   "scripts": {
     "check": "pnpm -r --if-present check",
     "test": "pnpm -r --if-present test",
+    "demo": "pnpm --dir api demo",
     "dev": "wrangler dev -c api/wrangler.jsonc --local --test-scheduled",
     "web:dev": "pnpm --dir web dev",
     "web:build": "pnpm --dir web build",

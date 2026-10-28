@@ -9,7 +9,7 @@ const evidenceStamped = parseAbiItem(
 const rulesetCommitted = parseAbiItem("event RulesetCommitted(bytes32 indexed rulesetHash, uint64 effectiveFrom)");
 
 // Public RPCs cap eth_getLogs ranges; query in chunks.
-const MAX_LOG_RANGE = 5_000n;
+const MAX_LOG_RANGE = 1_000n;
 
 export function sepoliaLedger(rpcUrl: string, ledgerAddress: Hex): LedgerSource {
   const client = createPublicClient({ chain: sepolia, transport: http(rpcUrl) });

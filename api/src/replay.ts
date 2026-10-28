@@ -1,8 +1,8 @@
 // Re-derives a trade from stored inputs to show it followed its pre-committed rules.
 import type { Extraction } from "./agent/types";
 import type { TweetFields } from "./stamp/encoding";
-import { buildStampRequest, HOUR_MS } from "./agent/cycle";
-import { converge } from "./agent/converge";
+import { buildStampRequest } from "./agent/cycle";
+import { agreementWindowStart, converge } from "./agent/converge";
 import { decideTrade } from "./agent/risk";
 import * as repo from "./db";
 import { parseRuleset, type Ruleset } from "./rulesets/schema";
@@ -22,7 +22,7 @@ export async function replayTrade(db: D1Database, tradeId: number): Promise<Repl
   const ruleset = parseRuleset(JSON.parse(rulesetJson));
   const request = parseStampRequest(JSON.parse(trade.requestJson));
   const asOf = request.observedAt * 1000;
-  const extractions = await repo.extractionsSince(db, ruleset.extraction.promptHash, asOf - ruleset.converge.windowHours * HOUR_MS, asOf);
+  const extractions = await repo.extractionsSince(db, ruleset.extraction.promptHash, agreementWindowStart(ruleset, asOf), asOf);
   const tweets = await repo.tweetsByIds(db, [...new Set([...request.tweetIds, ...extractions.map((e) => e.tweetId)])]);
   return replayFromInputs(trade, rulesetJson, extractions, tweets);
 }
@@ -100,7 +100,8 @@ function checkBundle(request: StampRequest, trade: repo.TradeRow, storedTweets: 
     return { id, hash: tweet ? tweetHash(tweet) : ("0x" as const) };
   });
   const recomputed = bundleHash(request, hashes, BigInt(trade.entryPriceE8));
+  const record = trade.isDemo ? "stored demo bundle" : "on-chain";
   return recomputed.toLowerCase() === trade.bundleHash.toLowerCase()
-    ? { name: "bundle", status: "pass", detail: `recomputes to the on-chain ${trade.bundleHash}` }
-    : { name: "bundle", status: "fail", detail: `recomputes to ${recomputed}, on-chain record is ${trade.bundleHash}` };
+    ? { name: "bundle", status: "pass", detail: `recomputes to the ${record} ${trade.bundleHash}` }
+    : { name: "bundle", status: "fail", detail: `recomputes to ${recomputed}, ${record} record is ${trade.bundleHash}` };
 }

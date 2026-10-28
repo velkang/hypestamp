@@ -6,6 +6,10 @@ import { tweetHash } from "../stamp/encoding";
 
 const STALE_AFTER_MS = 30 * 60_000;
 
+// Bounds RPC calls per run (rate limits, Workers' subrequest cap). After downtime the
+// ledger catches up over several runs; progress is saved after each one.
+export const MAX_BLOCKS_PER_RUN = 5_000n;
+
 export type StampedEvent = {
   bundleHash: Hex;
   rulesetHash: Hex;
@@ -40,7 +44,10 @@ export type ReconcileResult = {
 export async function reconcileStamps({ db, ledger, now, startBlock }: ReconcileDeps): Promise<ReconcileResult> {
   const last = await repo.lastSyncedBlock(db);
   const fromBlock = last === null ? startBlock : last + 1n;
-  const toBlock = await ledger.headBlock();
+  const head = await ledger.headBlock();
+  const toBlock = head < fromBlock + MAX_BLOCKS_PER_RUN - 1n ? head : fromBlock + MAX_BLOCKS_PER_RUN - 1n;
+  // Timeouts only once every block up to the head has been read: an unread block may hold the event.
+  const caughtUp = toBlock === head || fromBlock > head;
   const events = fromBlock <= toBlock ? await ledger.stampedEvents(fromBlock, toBlock) : [];
 
   const stamped: number[] = [];
@@ -56,13 +63,13 @@ export async function reconcileStamps({ db, ledger, now, startBlock }: Reconcile
         stampedAt: now,
       });
       stamped.push(trade.id);
-    } else if (now - trade.submittedAt >= STALE_AFTER_MS) {
+    } else if (caughtUp && now - trade.submittedAt >= STALE_AFTER_MS) {
       await repo.markFailed(db, trade.id, "stamp-timeout");
       failed.push(trade.id);
     }
   }
 
-  const rulesets = await reconcileRulesets(db, ledger, fromBlock, toBlock, now);
+  const rulesets = await reconcileRulesets(db, ledger, fromBlock, toBlock, now, caughtUp);
   if (fromBlock <= toBlock) await repo.setLastSyncedBlock(db, toBlock);
   return { fromBlock, toBlock, stamped, failed, ...rulesets };
 }
@@ -86,7 +93,7 @@ async function findMatch(db: D1Database, request: StampRequest, events: StampedE
 
 // Rulesets committed from the app are confirmed by their own on-chain event, never
 // by the bridge's say-so; one that never lands is marked failed.
-async function reconcileRulesets(db: D1Database, ledger: LedgerSource, fromBlock: bigint, toBlock: bigint, now: number) {
+async function reconcileRulesets(db: D1Database, ledger: LedgerSource, fromBlock: bigint, toBlock: bigint, now: number, caughtUp: boolean) {
   const pending = await rulesetStore.pendingRulesets(db);
   const confirmedRulesets: string[] = [];
   const failedRulesets: string[] = [];
@@ -98,7 +105,7 @@ async function reconcileRulesets(db: D1Database, ledger: LedgerSource, fromBlock
     if (event) {
       await rulesetStore.confirmRuleset(db, ruleset.hash, event.txHash);
       confirmedRulesets.push(ruleset.hash);
-    } else if (rulesetStore.isStale(ruleset.committedAt, now)) {
+    } else if (caughtUp && rulesetStore.isStale(ruleset.committedAt, now)) {
       await rulesetStore.failRuleset(db, ruleset.hash);
       failedRulesets.push(ruleset.hash);
     }

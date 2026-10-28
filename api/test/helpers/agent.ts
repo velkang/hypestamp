@@ -6,7 +6,8 @@ import { demoRuleset } from "../fixtures/ruleset";
 export const NOW = Date.parse("2026-10-15T12:00:00Z");
 export const ruleset = {
   ...demoRuleset,
-  effectiveFrom: Math.floor(NOW / 1000) - 600,
+  // In force before every fixture post: posts from before a ruleset's start never count.
+  effectiveFrom: Math.floor(NOW / 1000) - 7 * 3600,
   extraction: { ...demoRuleset.extraction, promptHash: extractionPromptHash() },
 };
 export const RULESET_HASH = rulesetHash(ruleset);

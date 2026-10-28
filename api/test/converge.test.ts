@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { converge } from "../src/agent/converge";
+import { agreementWindowStart, converge } from "../src/agent/converge";
 import type { Extraction } from "../src/agent/types";
 import { demoRuleset } from "./fixtures/ruleset";
 
@@ -58,6 +58,20 @@ describe("converge", () => {
       extraction("blknoiz06", NOW + 60_000, "LINK", 0.7),
     ], NOW);
     expect(signals).toEqual([]);
+  });
+
+  it("ignores posts made before the ruleset took effect, even inside the window", () => {
+    const rules = { ...demoRuleset, effectiveFrom: hoursAgo(1.5) / 1000 };
+    const signals = converge(rules, [
+      extraction("cobie", hoursAgo(1), "LINK", 0.7),
+      extraction("CryptoHayes", hoursAgo(2), "LINK", 0.7),
+    ], NOW);
+    expect(signals).toEqual([]);
+  });
+
+  it("starts the agreement window at whichever is later: the window or the ruleset's effective time", () => {
+    expect(agreementWindowStart({ ...demoRuleset, effectiveFrom: hoursAgo(1) / 1000 }, NOW)).toBe(hoursAgo(1));
+    expect(agreementWindowStart({ ...demoRuleset, effectiveFrom: hoursAgo(24) / 1000 }, NOW)).toBe(hoursAgo(6));
   });
 
   it("counts each KOL once, using their strongest mention", () => {

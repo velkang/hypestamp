@@ -3,7 +3,7 @@ import * as repo from "../db";
 import type { StampRequest } from "../stamp/bundle";
 import type { Ruleset } from "../rulesets/schema";
 import { canonicalJson, type TweetFields } from "../stamp/encoding";
-import { converge } from "./converge";
+import { agreementWindowStart, converge } from "./converge";
 import { extractTweets, type ExtractionClient } from "./extract";
 import { computeFlags } from "./flags";
 import { fetchSourceTweets } from "./ingest";
@@ -36,7 +36,7 @@ export async function runAgentCycle(rawDeps: CycleDeps): Promise<CycleResult> {
   if (!active) return { status: "no-active-ruleset" };
 
   const { ruleset, hash } = active;
-  const windowStart = deps.now - ruleset.converge.windowHours * HOUR_MS;
+  const windowStart = agreementWindowStart(ruleset, deps.now);
   const errors: string[] = [];
 
   const newTweets = await ingest(deps, ruleset.sources.map((s) => s.handle), windowStart, errors);

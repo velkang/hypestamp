@@ -61,6 +61,16 @@ describe("replayTrade", () => {
     expect((await replayTrade(db, tradeId))!.verdict).toBe("match");
   });
 
+  it("describes a demo bundle without claiming it is on-chain", async () => {
+    await stampCorrectly();
+    await db.prepare("UPDATE trades SET is_demo = 1 WHERE id = ?").bind(tradeId).run();
+    const result = (await replayTrade(db, tradeId))!;
+    expect(result.checks.find((check) => check.name === "bundle")).toMatchObject({
+      status: "pass", detail: expect.stringContaining("stored demo bundle"),
+    });
+    expect(result.checks.find((check) => check.name === "bundle")!.detail).not.toContain("on-chain");
+  });
+
   it("replays the saved positions even after those positions close", async () => {
     const original = (await repo.getTrade(db, tradeId))!;
     await db.prepare("DELETE FROM trades").run();

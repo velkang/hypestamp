@@ -15,7 +15,7 @@
   "triggers": { "crons": ["*/5 * * * *"] },
   "keep_vars": true,
   "vars": {
-    "SEPOLIA_RPC_URL": "https://ethereum-sepolia-rpc.publicnode.com",
+    "SEPOLIA_RPC_URL": "https://11155111.rpc.thirdweb.com",
     "LEDGER_ADDRESS": "0xaB3B70984e300f48Cd3523b15170dDe2A6ad0018",
     "LEDGER_START_BLOCK": "11920600",
   },

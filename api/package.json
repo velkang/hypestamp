@@ -6,6 +6,7 @@
   "scripts": {
     "check": "tsc --noEmit",
     "test": "vitest run",
+    "demo": "HYPESTAMP_DEMO=1 vitest run test/demo.test.ts",
     "db:migrate:local": "wrangler d1 migrations apply hypestamp --local"
   },
   "dependencies": {

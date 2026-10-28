@@ -20,6 +20,22 @@ beforeEach(() => {
 });
 
 describe("scheduled stages", () => {
+  it.each(["OPENAI_API_KEY", "TWITTERAPI_KEY", "BRIDGE_TOKEN", "BRIDGE_URL"])("still reconciles and checks exits without %s", async (key) => {
+    const result = await runScheduled({ ...env, [key]: undefined }, 1000);
+    expect(result.reconcile).toHaveProperty("toBlock", 1n);
+    expect(result.exits).toEqual({ closed: [], errors: [] });
+    expect(result.cycle).toEqual({ status: "error", error: `Invalid or missing environment variables: ${key}` });
+    expect(runAgentCycle).not.toHaveBeenCalled();
+  });
+
+  it("still checks exits and opens entries when ledger configuration is invalid", async () => {
+    const result = await runScheduled({ ...env, SEPOLIA_RPC_URL: "invalid" }, 1000);
+    expect(result.reconcile).toEqual({ status: "error", error: "Invalid or missing environment variables: SEPOLIA_RPC_URL" });
+    expect(reconcileStamps).not.toHaveBeenCalled();
+    expect(result.exits).toEqual({ closed: [], errors: [] });
+    expect(result.cycle).toEqual({ status: "no-active-ruleset" });
+  });
+
   it("reconciles and checks exits before opening new positions", async () => {
     await runScheduled(env, 1000);
     expect(vi.mocked(reconcileStamps).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(closePositions).mock.invocationCallOrder[0]);

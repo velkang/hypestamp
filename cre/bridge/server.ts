@@ -1,7 +1,7 @@
 // Local stand-in for the CRE gateway: accepts the agent's jobs and runs each one
 // through `cre workflow simulate --broadcast`. Bound to localhost only.
 //   BRIDGE_TOKEN=... bun cre/bridge/server.ts
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { authorize, createSerialQueue, parseJob, type Job } from "./jobs";
@@ -11,6 +11,9 @@ const TOKEN = process.env.BRIDGE_TOKEN;
 if (!TOKEN) throw new Error("BRIDGE_TOKEN is not set");
 
 const CRE_DIR = resolve(import.meta.dir, "..");
+// Optional local capture; never expose this directory through the HTTP server.
+const evidenceRoot = process.env.HYPESTAMP_CRE_EVIDENCE_DIR;
+if (evidenceRoot) mkdirSync(resolve(evidenceRoot), { recursive: true });
 const twitterApiKey = process.env.TWITTERAPI_KEY ?? readDevVar("TWITTERAPI_KEY");
 
 function readDevVar(name: string): string {
@@ -24,6 +27,7 @@ function readDevVar(name: string): string {
 const queue = createSerialQueue({ minIntervalMs: 30_000, now: Date.now, sleep: (ms) => Bun.sleep(ms) });
 
 async function simulate(job: Job): Promise<void> {
+  const startedAt = new Date().toISOString();
   const dir = mkdtempSync(join(tmpdir(), "hypestamp-bridge-"));
   const payload = join(dir, "payload.json");
   writeFileSync(payload, JSON.stringify(job));
@@ -35,6 +39,16 @@ async function simulate(job: Job): Promise<void> {
     );
     const output = (await new Response(proc.stdout).text()) + (await new Response(proc.stderr).text());
     const code = await proc.exited;
+    if (evidenceRoot) {
+      const capture = mkdtempSync(join(resolve(evidenceRoot), "execution-"));
+      writeFileSync(join(capture, "payload.json"), JSON.stringify(job, null, 2) + "\n");
+      writeFileSync(join(capture, "execution.log"), output);
+      writeFileSync(join(capture, "result.json"), JSON.stringify({
+        action: job.action, startedAt, finishedAt: new Date().toISOString(), exitCode: code,
+        target: "staging-settings", broadcast: true,
+      }, null, 2) + "\n");
+      console.info(`[bridge] execution evidence saved to ${capture}`);
+    }
     const summary = output.split("\n").filter((l) => l.includes("USER LOG") || l.includes("✗")).join("\n");
     console.info(`[bridge] ${job.action} exited ${code}\n${summary}`);
   } finally {

@@ -3,6 +3,8 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
+const apiTarget = process.env.HYPESTAMP_API_URL ?? "http://127.0.0.1:8787";
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   test: {
@@ -14,11 +16,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/v1": {
-        target: "http://127.0.0.1:8787",
+        target: apiTarget,
         changeOrigin: true,
       },
       "/health": {
-        target: "http://127.0.0.1:8787",
+        target: apiTarget,
         changeOrigin: true,
       },
     },

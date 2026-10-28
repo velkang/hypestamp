@@ -1,8 +1,8 @@
+import { agreementWindowStart } from "../agent/converge";
 import { Hono } from "hono";
 import * as repo from "../db";
 import { ok, type AppEnv } from "./respond";
 
-const HOUR_MS = 3_600_000;
 
 // Posts in the active ruleset's window with what the model read from each and the
 // trades that cite them: the data behind the signal timeline and the source views.
@@ -12,7 +12,7 @@ export const feed = new Hono<AppEnv>().get("/", async (c) => {
   const active = await repo.activeRuleset(db, now);
   if (!active) return ok(c, { window: null, posts: [] });
 
-  const window = { from: now - active.ruleset.converge.windowHours * HOUR_MS, to: now };
+  const window = { from: agreementWindowStart(active.ruleset, now), to: now };
   const [posts, trades] = await Promise.all([
     repo.feedPosts(db, active.ruleset.extraction.promptHash, window.from, window.to),
     repo.listTrades(db),

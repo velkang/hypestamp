@@ -13,9 +13,19 @@ const envSchema = z.object({
 
 export type AgentEnv = z.infer<typeof envSchema>;
 
+const ledgerSchema = envSchema.pick({ SEPOLIA_RPC_URL: true, LEDGER_ADDRESS: true, LEDGER_START_BLOCK: true });
+const cycleSchema = envSchema.pick({ TWITTERAPI_KEY: true, OPENAI_API_KEY: true, BRIDGE_URL: true, BRIDGE_TOKEN: true });
+
+export const parseLedgerEnv = (env: Record<string, unknown>) => parse(ledgerSchema, env);
+export const parseCycleEnv = (env: Record<string, unknown>) => parse(cycleSchema, env);
+
 // Fails fast with the names of bad variables only; values are secrets.
 export function parseEnv(env: Record<string, unknown>): AgentEnv {
-  const result = envSchema.safeParse(env);
+  return parse(envSchema, env);
+}
+
+function parse<T>(schema: z.ZodType<T>, env: Record<string, unknown>): T {
+  const result = schema.safeParse(env);
   if (!result.success) {
     const names = [...new Set(result.error.issues.map((issue) => issue.path.join(".")))];
     throw new Error(`Invalid or missing environment variables: ${names.join(", ")}`);

@@ -5,6 +5,8 @@
 node_modules/
 .pnpm-store/
 coverage/
+demo-output/
+cre-evidence/
 dist
 *.tsbuildinfo
 
@@ -33,3 +35,4 @@ api/scripts
 .impeccable
 design-qa.md
 DESIGN.md
+SUBMISSION.md

@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import type { Hex } from "viem";
 import { closePositions } from "./agent/exits";
 import { runAgentCycle } from "./agent/cycle";
-import { parseEnv } from "./env";
+import { parseCycleEnv, parseLedgerEnv } from "./env";
 import { sepoliaLedger } from "./ledger/client";
 import { reconcileStamps } from "./ledger/reconcile";
 import { createBridgeClient } from "./stamp/bridge-client";
@@ -17,22 +17,27 @@ async function attempt<T>(run: () => Promise<T>) {
 
 // Confirm earlier entries, free closed slots, then decide new entries.
 export async function runScheduled(rawEnv: WorkerEnv, now: number) {
-  const env = parseEnv(rawEnv);
-  const bridge = createBridgeClient({ fetch, url: env.BRIDGE_URL, token: env.BRIDGE_TOKEN });
-  const reconcile = await attempt(() => reconcileStamps({
-    db: rawEnv.DB,
-    ledger: sepoliaLedger(env.SEPOLIA_RPC_URL, env.LEDGER_ADDRESS as Hex),
-    now,
-    startBlock: env.LEDGER_START_BLOCK,
-  }));
+  const reconcile = await attempt(() => {
+    const env = parseLedgerEnv(rawEnv);
+    return reconcileStamps({
+      db: rawEnv.DB,
+      ledger: sepoliaLedger(env.SEPOLIA_RPC_URL, env.LEDGER_ADDRESS as Hex),
+      now,
+      startBlock: env.LEDGER_START_BLOCK,
+    });
+  });
   const exits = await attempt(() => closePositions({ db: rawEnv.DB, fetch, now }));
-  const cycle = await attempt(() => runAgentCycle({
-    db: rawEnv.DB,
-    now,
-    fetch,
-    twitterApiKey: env.TWITTERAPI_KEY,
-    model: new OpenAI({ apiKey: env.OPENAI_API_KEY }),
-    submitStamp: bridge.submitStamp,
-  }));
+  const cycle = await attempt(() => {
+    const env = parseCycleEnv(rawEnv);
+    const bridge = createBridgeClient({ fetch, url: env.BRIDGE_URL, token: env.BRIDGE_TOKEN });
+    return runAgentCycle({
+      db: rawEnv.DB,
+      now,
+      fetch,
+      twitterApiKey: env.TWITTERAPI_KEY,
+      model: new OpenAI({ apiKey: env.OPENAI_API_KEY }),
+      submitStamp: bridge.submitStamp,
+    });
+  });
   return { reconcile, exits, cycle };
 }

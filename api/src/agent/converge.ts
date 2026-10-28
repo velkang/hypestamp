@@ -23,10 +23,16 @@ function stronger(a: SignalKol & { postedAt: number }, b: SignalKol & { postedAt
 
 type Candidate = SignalKol & { postedAt: number };
 
+// Only posts made while the ruleset was in force count. Otherwise rules could be
+// written after reading the posts they would trade on, which the cooldown exists to stop.
+export function agreementWindowStart(ruleset: Ruleset, now: number): number {
+  return Math.max(now - ruleset.converge.windowHours * HOUR_MS, ruleset.effectiveFrom * 1000);
+}
+
 // token -> side -> handle -> strongest qualifying mention
 function collect(ruleset: Ruleset, extractions: Extraction[], now: number) {
   const trust = new Map(ruleset.sources.map((s) => [s.handle.toLowerCase(), s]));
-  const windowStart = now - ruleset.converge.windowHours * HOUR_MS;
+  const windowStart = agreementWindowStart(ruleset, now);
   const groups = new Map<string, Map<Side, Map<string, Candidate>>>();
 
   for (const extraction of extractions) {

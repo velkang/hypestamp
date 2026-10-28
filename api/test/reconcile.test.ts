@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { stringToHex, type Hex } from "viem";
 import * as repo from "../src/db";
-import { reconcileStamps, type StampedEvent } from "../src/ledger/reconcile";
+import { MAX_BLOCKS_PER_RUN, reconcileStamps, type StampedEvent } from "../src/ledger/reconcile";
+import * as rulesetStore from "../src/rulesets/store";
 import { bundleHash, type StampRequest } from "../src/stamp/bundle";
 import { rulesetHash, tweetHash } from "../src/stamp/encoding";
 import { createTestDb } from "./helpers/d1";
@@ -93,6 +94,34 @@ describe("reconcileStamps", () => {
     expect(result.failed).toEqual([tradeId]);
     expect((await repo.getTrade(db, tradeId))!.failureReason).toBe("stamp-timeout");
     expect(await repo.openTradeTokens(db)).toEqual([]);
+  });
+
+  it("scans a bounded range per run and saves progress, so a long gap catches up over runs", async () => {
+    const head = 400n + MAX_BLOCKS_PER_RUN * 3n;
+    const ledger = source([], head);
+    const first = await reconcileStamps({ db, ledger, now: NOW, startBlock: 400n });
+    expect(first.toBlock).toBe(400n + MAX_BLOCKS_PER_RUN - 1n);
+    expect(ledger.stampedEvents).toHaveBeenCalledWith(400n, 400n + MAX_BLOCKS_PER_RUN - 1n);
+    expect(await repo.lastSyncedBlock(db)).toBe(400n + MAX_BLOCKS_PER_RUN - 1n);
+
+    const second = await reconcileStamps({ db, ledger, now: NOW, startBlock: 400n });
+    expect(second.fromBlock).toBe(400n + MAX_BLOCKS_PER_RUN);
+  });
+
+  it("does not fail an unmatched trade while blocks after the scanned range are unread", async () => {
+    const ledger = source([], 400n + MAX_BLOCKS_PER_RUN * 2n);
+    const result = await reconcileStamps({ db, ledger, now: NOW + 60 * 60_000, startBlock: 400n });
+    expect(result.failed).toEqual([]);
+    expect((await repo.submittedTrades(db)).map((t) => t.id)).toEqual([tradeId]);
+  });
+
+  it("does not fail a pending ruleset while blocks after the scanned range are unread", async () => {
+    const pending = `0x${"ef".repeat(32)}`;
+    await rulesetStore.savePendingRuleset(db, { ...demoRuleset, version: 9 }, pending, NOW - 2 * 3_600_000);
+    const ledger = source([], 400n + MAX_BLOCKS_PER_RUN * 2n);
+    const result = await reconcileStamps({ db, ledger, now: NOW, startBlock: 400n });
+    expect(result.failedRulesets).toEqual([]);
+    expect((await rulesetStore.pendingRulesets(db)).map((r) => r.hash)).toEqual([pending]);
   });
 
   it("does nothing when there are no new blocks", async () => {
